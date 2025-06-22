@@ -20,6 +20,14 @@ MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads
 DPI_PRIMARY       = 300
 DPI_ENHANCED      = 600
 
+# --- Tesseract options -------------------------------------------------------
+# Language, OCR engine mode and page segmentation mode can be tuned depending
+# on the type of documents processed. They are exposed here so that pipeline
+# users can adjust them without touching the codebase.
+TESSERACT_LANG    = "eng"
+TESSERACT_OEM     = 3     # default LSTM engine
+TESSERACT_PSM     = 6     # assume a single uniform block of text
+
 
 CRITICAL_FIELDS   = ["electricity_kwh", "carbon_kgco2e"]
 

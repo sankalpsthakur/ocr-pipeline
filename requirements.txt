@@ -9,3 +9,4 @@ requests==2.32.3
 regex==2025.6.18
 numpy==1.26.4
 pydantic==2.7.0
+opencv-python==4.10.0.82
