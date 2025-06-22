@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from config import TESSERACT_LANG, TESSERACT_OEM, TESSERACT_PSM, TAU_FIELD_ACCEPT, TAU_ENHANCER_PASS, TAU_LLM_PASS, MAX_PAGES, DPI_PRIMARY, DPI_ENHANCED, OCR_BACKEND
+try:
+    # Module execution: python -m robust_ocr_pipeline.pipeline
+    from . import config
+    from config import *
+except ImportError:
+    # Direct execution: python pipeline.py
+    import config
+    from config import *
 
 try:
     import cv2
@@ -99,16 +106,22 @@ def _tesseract_ocr(image) -> OcrResult:
         config=config,
         output_type=pytesseract.Output.DICT,
     )
-    tokens = data["text"]
-    confs = []
-    for c in data["conf"]:
-        try:
-            val = float(c)
-        except ValueError:
-            val = -1.0
-        confs.append(max(val, 0.0) / 100.0)
-    joined = " ".join(tokens)
-    return OcrResult(text=joined, tokens=tokens, confidences=confs)
+    
+    # Filter tokens: remove empty text and negative confidence
+    filtered_tokens = []
+    filtered_confs = []
+    for token, conf in zip(data["text"], data["conf"]):
+        if token.strip():  # Non-empty text
+            try:
+                conf_val = float(conf)
+                if conf_val >= 0:  # Non-negative confidence
+                    filtered_tokens.append(token)
+                    filtered_confs.append(conf_val / 100.0)
+            except ValueError:
+                continue  # Skip invalid confidence values
+    
+    joined = " ".join(filtered_tokens)
+    return OcrResult(text=joined, tokens=filtered_tokens, confidences=filtered_confs)
 
 def pdf_to_images(pdf_path: Path, dpi: int) -> List:
     """Convert PDF pages to images with a page cap for efficiency."""
@@ -167,13 +180,13 @@ def run_ocr(pdf_path: Path) -> OcrResult:
     if enhanced.field_confidence >= TAU_ENHANCER_PASS:
         LOGGER.info("Enhancement pass accepted (%.2f)", enhanced.field_confidence)
         return enhanced
-
+    
     # LLM fallback if confidence is still too low
     if enhanced.field_confidence < TAU_LLM_PASS:
         LOGGER.warning("OCR confidence (%.2f) below LLM threshold (%.2f)", 
                       enhanced.field_confidence, TAU_LLM_PASS)
         LOGGER.info("LLM fallback could be implemented here")
-
+    
     LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
     return enhanced
 
@@ -239,7 +252,8 @@ def build_payload(fields: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
 # -----------------------------------------------------------------------------
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: python pipeline.py path/to/bill.pdf [--save outfile.json]")
+        print("Usage: python -m robust_ocr_pipeline.pipeline path/to/bill.pdf [--save outfile.json]")
+        print("   or: python pipeline.py path/to/bill.pdf [--save outfile.json]")
         sys.exit(1)
 
     bill_path = Path(sys.argv[1])
