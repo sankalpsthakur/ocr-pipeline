@@ -3,7 +3,7 @@
 **Version:** 1.2.0  
 **Last updated:** 2025-06-22 14:00:00 UTC
 
-This reference implementation ingests a utility bill (PDF/JPEG/PNG), performs high‑accuracy text
+This reference implementation ingests a utility bill (PDF/PNG/JPG/JPEG), performs high‑accuracy text
 extraction with a *cascaded OCR* strategy, and returns a canonical JSON object containing:
 
 * Electricity consumption (kWh)
@@ -15,9 +15,7 @@ and has been validated on the sample DEWA bill.
 ## Project layout
 
 ```
-robust_ocr_pipeline/
-├── __init__.py      # package initialization
-├── __main__.py      # module execution entry point
+ocr_pipeline/
 ├── config.py        # centralised secrets & thresholds
 ├── pipeline.py      # end‑to‑end orchestration
 ├── requirements.txt # pip dependencies
@@ -35,14 +33,11 @@ $ pip install -r requirements.txt
 ```
 
 ### 2. Run the pipeline
-From the parent directory of `robust_ocr_pipeline/`:
+From within the project directory:
 ```bash
-$ python -m robust_ocr_pipeline.pipeline /path/to/utility_bill.pdf
-```
-
-Or directly from within the project directory:
-```bash
-$ python pipeline.py /path/to/utility_bill.pdf
+$ python pipeline.py utility_bill.pdf
+$ python pipeline.py Actualbill.png
+$ python pipeline.py bill_image.jpg
 ```
 
 The script prints the JSON payload to `stdout`. Add `--save output.json`
