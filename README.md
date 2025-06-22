@@ -1,7 +1,7 @@
 # OCR Bill Parsing Pipeline
 
-**Version:** 1.0.0  
-**Last updated:** 2025-06-22 11:48:39 UTC  
+**Version:** 1.1.0
+**Last updated:** 2025-06-22 13:00:00 UTC
 
 This reference implementation ingests a utility bill (PDF/JPEG/PNG), performs high‑accuracy text
 extraction with a *cascaded OCR* strategy, and returns a canonical JSON object containing:
@@ -16,12 +16,10 @@ and has been validated on the sample DEWA bill.
 
 ```
 robust_ocr_pipeline/
-├── config.py            # centralised secrets & thresholds
-├── ocr.py               # cascaded OCR engines + confidence aggregation
-├── extractor.py         # field regex logic
-├── pipeline.py          # end‑to‑end orchestration
-├── requirements.txt     # pip dependencies
-└── README.md            # this file
+├── config.py        # centralised secrets & thresholds
+├── pipeline.py      # end‑to‑end orchestration
+├── requirements.txt # pip dependencies
+└── README.md        # this file
 ```
 
 ## Quick‑start
@@ -37,14 +35,18 @@ to persist to disk.
 
 ## OCR strategy
 
-1. **Digital text pass** – `pdfminer.six` (vector PDFs only).  
-2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.  
-3. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
-   **or** switch to the Google Vision API (`OCR_BACKEND="gcv"`).  
-4. **LLM fallback** – optional: set `USE_LLM_FALLBACK=True` in `config.py`.  
+1. **Digital text pass** – `pdfminer.six` (vector PDFs only).
+2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.
+3. **Orientation check** – pages are auto‑rotated using Tesseract OSD.
+4. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
+   **or** switch to the Google Vision API (`OCR_BACKEND="gcv"`).
+5. **LLM fallback** – optional: set `USE_LLM_FALLBACK=True` in `config.py`.
 
 Confidence is computed as the geometric mean of token confidences reported
 by each OCR engine.
+
+Tesseract language, OEM and PSM settings can be adjusted in `config.py`
+to match the document type.
 
 ## Hard‑coded API keys
 
@@ -57,10 +59,11 @@ by each OCR engine.
 > **Important**: Keys are fake placeholders. Replace them with real credentials
 > before first run. Hard‑coding is **not** recommended in production.
 
-## Extending the extractor
+## Customising field extraction
 
-Add new regex patterns in `extractor.py`. Unit normalisation is handled
-in `extractor.normalise_number()`.
+Regex patterns for electricity and carbon values live in `pipeline.py`.
+Modify `ENERGY_RE` and `CARBON_RE` or extend `extract_fields()` to
+handle additional metrics.
 
 ## License
 
