@@ -22,3 +22,4 @@ DPI_ENHANCED      = 600
 
 
 CRITICAL_FIELDS   = ["electricity_kwh", "carbon_kgco2e"]
+
