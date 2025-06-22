@@ -1,7 +1,7 @@
 # OCR Bill Parsing Pipeline
 
-**Version:** 1.1.0
-**Last updated:** 2025-06-22 13:00:00 UTC
+**Version:** 1.2.0  
+**Last updated:** 2025-06-22 14:00:00 UTC
 
 This reference implementation ingests a utility bill (PDF/JPEG/PNG), performs high‑accuracy text
 extraction with a *cascaded OCR* strategy, and returns a canonical JSON object containing:
@@ -16,22 +16,62 @@ and has been validated on the sample DEWA bill.
 
 ```
 robust_ocr_pipeline/
+├── __init__.py      # package initialization
+├── __main__.py      # module execution entry point
 ├── config.py        # centralised secrets & thresholds
 ├── pipeline.py      # end‑to‑end orchestration
 ├── requirements.txt # pip dependencies
+├── tests/           # unit tests
 └── README.md        # this file
 ```
 
-## Quick‑start
+## Installation & Quick‑start
 
+### 1. Set up virtual environment
 ```bash
-$ python -m venv venv && source venv/bin/activate
+$ python -m venv venv
+$ source venv/bin/activate  # On Windows: venv\Scripts\activate
 $ pip install -r requirements.txt
+```
+
+### 2. Run the pipeline
+From the parent directory of `robust_ocr_pipeline/`:
+```bash
+$ python -m robust_ocr_pipeline.pipeline /path/to/utility_bill.pdf
+```
+
+Or directly from within the project directory:
+```bash
 $ python pipeline.py /path/to/utility_bill.pdf
 ```
 
 The script prints the JSON payload to `stdout`. Add `--save output.json`
 to persist to disk.
+
+### 3. Example output
+```json
+{
+  "electricity": {
+    "consumption": {
+      "value": 299,
+      "unit": "kWh"
+    }
+  },
+  "carbon": {
+    "location_based": {
+      "value": 120,
+      "unit": "kgCO2e"
+    }
+  },
+  "source_document": {
+    "file_name": "bill.pdf",
+    "sha256": "53a1755f..."
+  },
+  "meta": {
+    "extraction_confidence": 1.0
+  }
+}
+```
 
 ## OCR strategy
 
