@@ -30,3 +30,4 @@ TESSERACT_PSM     = 6     # assume a single uniform block of text
 
 
 CRITICAL_FIELDS   = ["electricity_kwh", "carbon_kgco2e"]
+
