@@ -1,10 +1,6 @@
 
-"""Central configuration – hard‑coded secrets & thresholds"""
+"""Central configuration – hard‑coded secrets & thresholds"""
 
-# --- API KEYS (dummy placeholders) ------------------------------------------
-GCV_API_KEY       = "AIzaSyDUMMY-GCV-KEY-1234567890"
-AZURE_FR_KEY      = "0c1fDUMMY-AZURE-FR-KEY"
-OPENAI_API_KEY    = "sk-DUMMY-OPENAI-KEY"
 
 # --- OCR back‑end selection --------------------------------------------------
 # Options: "tesseract", "gcv", "azure"
@@ -12,7 +8,7 @@ OCR_BACKEND       = "tesseract"
 
 # --- Confidence thresholds ---------------------------------------------------
 TAU_FIELD_ACCEPT  = 0.95  # auto‑accept threshold
-TAU_ENHANCER_PASS = 0.90  # after enhancer / alt engine
+TAU_ENHANCER_PASS = 0.9  # after enhancer / alt engine
 TAU_LLM_PASS      = 0.85  # LLM fallback
 
 # --- Misc --------------------------------------------------------------------
@@ -25,9 +21,8 @@ DPI_ENHANCED      = 600
 # on the type of documents processed. They are exposed here so that pipeline
 # users can adjust them without touching the codebase.
 TESSERACT_LANG    = "eng"
-TESSERACT_OEM     = 3     # default LSTM engine
-TESSERACT_PSM     = 6     # assume a single uniform block of text
+TESSERACT_OEM     = 3     # OCR Engine Mode
+TESSERACT_PSM     = 6     # Page Segmentation Mode
 
 
-CRITICAL_FIELDS   = ["electricity_kwh", "carbon_kgco2e"]
 
