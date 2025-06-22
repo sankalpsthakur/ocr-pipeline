@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from config import TESSERACT_LANG, TESSERACT_OEM, TESSERACT_PSM
+from config import TESSERACT_LANG, TESSERACT_OEM, TESSERACT_PSM, TAU_FIELD_ACCEPT, TAU_ENHANCER_PASS, TAU_LLM_PASS, MAX_PAGES, DPI_PRIMARY, DPI_ENHANCED, OCR_BACKEND
 
 try:
     import cv2
@@ -38,22 +38,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     extract_text = None
 
-# -----------------------------------------------------------------------------
-# Configuration (demo defaults)
-# -----------------------------------------------------------------------------
-GCV_API_KEY = "AIzaSyDUMMY-GCV-KEY-1234567890"
-AZURE_FR_KEY = "0c1fDUMMY-AZURE-FR-KEY"
-OPENAI_API_KEY = "sk-DUMMY-OPENAI-KEY"
-
-OCR_BACKEND = "tesseract"
-TAU_FIELD_ACCEPT = 0.95
-TAU_ENHANCER_PASS = 0.90
-TAU_LLM_PASS = 0.85
-
-MAX_PAGES = 20
-DPI_PRIMARY = 300
-DPI_ENHANCED = 600
-CRITICAL_FIELDS = ["electricity_kwh", "carbon_kgco2e"]
+# Configuration imported from config.py
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
@@ -136,6 +121,26 @@ def pdf_to_images(pdf_path: Path, dpi: int) -> List:
         last_page=MAX_PAGES,
     )
 
+def _run_ocr_engine(pdf_path: Path, dpi: int) -> OcrResult:
+    """Run OCR using the configured backend engine."""
+    if OCR_BACKEND == "tesseract":
+        images = pdf_to_images(pdf_path, dpi=dpi)
+        joined, tok, conf = "", [], []
+        for img in images:
+            res = _tesseract_ocr(img)
+            joined += res.text + "\n"
+            tok.extend(res.tokens)
+            conf.extend(res.confidences)
+        return OcrResult(joined, tok, conf)
+    elif OCR_BACKEND == "gcv":
+        # Google Cloud Vision implementation would go here
+        raise NotImplementedError("Google Cloud Vision backend not implemented")
+    elif OCR_BACKEND == "azure":
+        # Azure Form Recognizer implementation would go here
+        raise NotImplementedError("Azure Form Recognizer backend not implemented")
+    else:
+        raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
+
 def run_ocr(pdf_path: Path) -> OcrResult:
     """Cascaded OCR: digital pass ➜ bitmap pass ➜ enhancer."""
     if extract_text:
@@ -147,32 +152,27 @@ def run_ocr(pdf_path: Path) -> OcrResult:
         except Exception as exc:
             LOGGER.warning("pdfminer failed: %s", exc)
 
-    images = pdf_to_images(pdf_path, dpi=DPI_PRIMARY)
-    joined, tok, conf = "", [], []
-    for img in images:
-        res = _tesseract_ocr(img)
-        joined += res.text + "\n"
-        tok.extend(res.tokens)
-        conf.extend(res.confidences)
-
-    result = OcrResult(joined, tok, conf)
+    # Primary OCR pass
+    LOGGER.info("Running primary OCR pass at %d dpi with %s backend…", DPI_PRIMARY, OCR_BACKEND)
+    result = _run_ocr_engine(pdf_path, dpi=DPI_PRIMARY)
+    
     if result.field_confidence >= TAU_FIELD_ACCEPT:
-        LOGGER.info("tesseract pass accepted (%.2f)", result.field_confidence)
+        LOGGER.info("Primary pass accepted (%.2f)", result.field_confidence)
         return result
 
-    LOGGER.info("Enhancer triggered – running 600 dpi…")
-    images = pdf_to_images(pdf_path, dpi=DPI_ENHANCED)
-    joined, tok, conf = "", [], []
-    for img in images:
-        res = _tesseract_ocr(img)
-        joined += res.text + "\n"
-        tok.extend(res.tokens)
-        conf.extend(res.confidences)
-    enhanced = OcrResult(joined, tok, conf)
-
+    # Enhancement pass
+    LOGGER.info("Enhancement triggered – running at %d dpi…", DPI_ENHANCED)
+    enhanced = _run_ocr_engine(pdf_path, dpi=DPI_ENHANCED)
+    
     if enhanced.field_confidence >= TAU_ENHANCER_PASS:
-        LOGGER.info("enhancer pass accepted (%.2f)", enhanced.field_confidence)
+        LOGGER.info("Enhancement pass accepted (%.2f)", enhanced.field_confidence)
         return enhanced
+
+    # LLM fallback if confidence is still too low
+    if enhanced.field_confidence < TAU_LLM_PASS:
+        LOGGER.warning("OCR confidence (%.2f) below LLM threshold (%.2f)", 
+                      enhanced.field_confidence, TAU_LLM_PASS)
+        LOGGER.info("LLM fallback could be implemented here")
 
     LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
     return enhanced
