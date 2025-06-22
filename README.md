@@ -1,4 +1,3 @@
-
 # OCR Bill Parsing Pipeline
 
 **Version:** 1.0.0  
@@ -17,8 +16,12 @@ and has been validated on the sample DEWA bill.
 
 ```
 robust_ocr_pipeline/
-├── pipeline.py          # standalone OCR pipeline (all logic in one file)
+├── config.py            # centralised secrets & thresholds
+├── ocr.py               # cascaded OCR engines + confidence aggregation
+├── extractor.py         # field regex logic
+├── pipeline.py          # end‑to‑end orchestration
 ├── requirements.txt     # pip dependencies
+└── README.md            # this file
 ```
 
 ## Quick‑start
@@ -51,8 +54,14 @@ by each OCR engine.
 * **Azure Form Recognizer** – `AZURE_FR_KEY`
 * **OpenAI GPT‑4o** – `OPENAI_API_KEY`
 
+> **Important**: Keys are fake placeholders. Replace them with real credentials
+> before first run. Hard‑coding is **not** recommended in production.
 
 ## Extending the extractor
 
 Add new regex patterns in `extractor.py`. Unit normalisation is handled
 in `extractor.normalise_number()`.
+
+## License
+
+MIT – Feel free to fork, adapt and deploy.
