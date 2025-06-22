@@ -17,10 +17,7 @@ and has been validated on the sample DEWA bill.
 
 ```
 robust_ocr_pipeline/
-├── config.py            # centralised secrets & thresholds 
-├── ocr.py               # cascaded OCR engines + confidence aggregation
-├── extractor.py         # field regex logic
-├── pipeline.py          # end‑to‑end orchestration
+├── pipeline.py          # standalone OCR pipeline (all logic in one file)
 ├── requirements.txt     # pip dependencies
 ```
 
