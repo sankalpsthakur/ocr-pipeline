@@ -14,14 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-try:
-    # Module execution: python -m robust_ocr_pipeline.pipeline
-    from . import config
-    from config import *
-except ImportError:
-    # Direct execution: python pipeline.py
-    import config
-    from config import *
+# Direct execution: python pipeline.py
+import config
+from config import *
 
 try:
     import cv2
@@ -31,6 +26,10 @@ try:
     import numpy as np
 except Exception:  # pragma: no cover - optional dependency
     np = None
+try:
+    from PIL import Image
+except Exception:  # pragma: no cover - optional dependency
+    Image = None
 
 try:
     import pytesseract
@@ -134,17 +133,29 @@ def pdf_to_images(pdf_path: Path, dpi: int) -> List:
         last_page=MAX_PAGES,
     )
 
-def _run_ocr_engine(pdf_path: Path, dpi: int) -> OcrResult:
+def load_image(image_path: Path):
+    """Load an image file using PIL."""
+    if Image is None:
+        raise RuntimeError("PIL is not available")
+    return Image.open(str(image_path))
+
+def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) -> OcrResult:
     """Run OCR using the configured backend engine."""
     if OCR_BACKEND == "tesseract":
-        images = pdf_to_images(pdf_path, dpi=dpi)
-        joined, tok, conf = "", [], []
-        for img in images:
-            res = _tesseract_ocr(img)
-            joined += res.text + "\n"
-            tok.extend(res.tokens)
-            conf.extend(res.confidences)
-        return OcrResult(joined, tok, conf)
+        if is_image:
+            # Process single image file
+            img = load_image(file_path)
+            return _tesseract_ocr(img)
+        else:
+            # Process PDF (existing logic)
+            images = pdf_to_images(file_path, dpi=dpi)
+            joined, tok, conf = "", [], []
+            for img in images:
+                res = _tesseract_ocr(img)
+                joined += res.text + "\n"
+                tok.extend(res.tokens)
+                conf.extend(res.confidences)
+            return OcrResult(joined, tok, conf)
     elif OCR_BACKEND == "gcv":
         # Google Cloud Vision implementation would go here
         raise NotImplementedError("Google Cloud Vision backend not implemented")
@@ -154,41 +165,53 @@ def _run_ocr_engine(pdf_path: Path, dpi: int) -> OcrResult:
     else:
         raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
 
-def run_ocr(pdf_path: Path) -> OcrResult:
+def run_ocr(file_path: Path) -> OcrResult:
     """Cascaded OCR: digital pass ➜ bitmap pass ➜ enhancer."""
-    if extract_text:
+    # Check if file is an image
+    is_image = file_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
+    
+    if not is_image and extract_text:
         try:
             LOGGER.info("Running pdfminer (digital text pass)…")
-            text = extract_text(str(pdf_path))
+            text = extract_text(str(file_path))
             if text and text.strip():
                 return OcrResult(text=text, tokens=text.split(), confidences=[1.0] * len(text.split()))
         except Exception as exc:
             LOGGER.warning("pdfminer failed: %s", exc)
 
     # Primary OCR pass
-    LOGGER.info("Running primary OCR pass at %d dpi with %s backend…", DPI_PRIMARY, OCR_BACKEND)
-    result = _run_ocr_engine(pdf_path, dpi=DPI_PRIMARY)
+    if is_image:
+        LOGGER.info("Running primary OCR pass on image with %s backend…", OCR_BACKEND)
+        result = _run_ocr_engine(file_path, is_image=True)
+    else:
+        LOGGER.info("Running primary OCR pass at %d dpi with %s backend…", DPI_PRIMARY, OCR_BACKEND)
+        result = _run_ocr_engine(file_path, dpi=DPI_PRIMARY)
     
     if result.field_confidence >= TAU_FIELD_ACCEPT:
         LOGGER.info("Primary pass accepted (%.2f)", result.field_confidence)
         return result
 
-    # Enhancement pass
-    LOGGER.info("Enhancement triggered – running at %d dpi…", DPI_ENHANCED)
-    enhanced = _run_ocr_engine(pdf_path, dpi=DPI_ENHANCED)
-    
-    if enhanced.field_confidence >= TAU_ENHANCER_PASS:
-        LOGGER.info("Enhancement pass accepted (%.2f)", enhanced.field_confidence)
+    # Enhancement pass (for PDFs only)
+    if not is_image:
+        LOGGER.info("Enhancement triggered – running at %d dpi…", DPI_ENHANCED)
+        enhanced = _run_ocr_engine(file_path, dpi=DPI_ENHANCED)
+        
+        if enhanced.field_confidence >= TAU_ENHANCER_PASS:
+            LOGGER.info("Enhancement pass accepted (%.2f)", enhanced.field_confidence)
+            return enhanced
+        
+        # LLM fallback if confidence is still too low
+        if enhanced.field_confidence < TAU_LLM_PASS:
+            LOGGER.warning("OCR confidence (%.2f) below LLM threshold (%.2f)", 
+                          enhanced.field_confidence, TAU_LLM_PASS)
+            LOGGER.info("LLM fallback could be implemented here")
+        
+        LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
         return enhanced
-    
-    # LLM fallback if confidence is still too low
-    if enhanced.field_confidence < TAU_LLM_PASS:
-        LOGGER.warning("OCR confidence (%.2f) below LLM threshold (%.2f)", 
-                      enhanced.field_confidence, TAU_LLM_PASS)
-        LOGGER.info("LLM fallback could be implemented here")
-    
-    LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
-    return enhanced
+    else:
+        # For images, just return the result as enhancement is not applicable
+        LOGGER.info("Image processing complete (%.2f)", result.field_confidence)
+        return result
 
 # -----------------------------------------------------------------------------
 # Field extraction
@@ -252,20 +275,29 @@ def build_payload(fields: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
 # -----------------------------------------------------------------------------
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: python -m robust_ocr_pipeline.pipeline path/to/bill.pdf [--save outfile.json]")
-        print("   or: python pipeline.py path/to/bill.pdf [--save outfile.json]")
+        print("Usage: python pipeline.py bill.[pdf|png] [--save outfile.json]")
         sys.exit(1)
 
-    bill_path = Path(sys.argv[1])
+    file_path = Path(sys.argv[1])
     save_path = None
     if "--save" in sys.argv:
         save_path = Path(sys.argv[sys.argv.index("--save") + 1])
 
-    ocr_res = run_ocr(bill_path)
+    # Check if file exists and has supported extension
+    if not file_path.exists():
+        print(f"Error: File '{file_path}' does not exist")
+        sys.exit(1)
+    
+    supported_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
+    if file_path.suffix.lower() not in supported_extensions:
+        print(f"Error: Unsupported file type '{file_path.suffix}'. Supported: {', '.join(supported_extensions)}")
+        sys.exit(1)
+
+    ocr_res = run_ocr(file_path)
     fields = extract_fields(ocr_res.text)
     fields["_confidence"] = ocr_res.field_confidence
 
-    payload = build_payload(fields, bill_path)
+    payload = build_payload(fields, file_path)
 
     if save_path:
         save_path.write_text(json.dumps(payload, indent=2))

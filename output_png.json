@@ -1,0 +1,21 @@
+{
+  "electricity": {
+    "consumption": {
+      "value": 299,
+      "unit": "kWh"
+    }
+  },
+  "carbon": {
+    "location_based": {
+      "value": 120,
+      "unit": "kgCO2e"
+    }
+  },
+  "source_document": {
+    "file_name": "Actualbill.png",
+    "sha256": "9bc1731a90789e157b4aa6d53667c11614dd5093cde1bfdd129e80506bc16faa"
+  },
+  "meta": {
+    "extraction_confidence": 0.9433501574817036
+  }
+}
