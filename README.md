@@ -65,4 +65,4 @@ in `extractor.normalise_number()`.
 
 ## License
 
-MIT – Feel free to fork, adapt and deploy.
+MIT – Feel free to fork, adapt and deploy.
