@@ -1,0 +1,528 @@
+diff --git a/.gitignore b/.gitignore
+index 1f2c370..b462f4c 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,15 +2,11 @@ __pycache__/
+ *.pyc
+ .pytest_cache/
+ 
+-# Test/sample files (exclude critical test files)
++# Test/sample files
+ *.png
+ *.pdf
+ *.jpg
+ *.jpeg
+-
+-# Important: DO NOT ignore these critical test files
+-!ActualBill.pdf
+-!ActualBill.png
+ output_*.json
+ imghdr.py
+ 
+diff --git a/ActualBill.pdf b/ActualBill.pdf
+deleted file mode 100644
+index b21fa22..0000000
+Binary files a/ActualBill.pdf and /dev/null differ
+diff --git a/ActualBill.png b/ActualBill.png
+deleted file mode 100644
+index 9e97fcf..0000000
+Binary files a/ActualBill.png and /dev/null differ
+diff --git a/README.md b/README.md
+index 5d3dbc3..0224b5c 100644
+--- a/README.md
++++ b/README.md
+@@ -25,14 +25,7 @@ ocr_pipeline/
+ 
+ ## Installation & Quick‑start
+ 
+-### System packages
+-Install `tesseract-ocr` and `poppler-utils` via `apt` before installing Python dependencies:
+-
+-```bash
+-$ sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
+-```
+-
+-### 1. Set up the `venv` virtual environment
++### 1. Set up virtual environment
+ 
+ **Requirements:** Python 3.8+ (tested with Python 3.13)
+ 
+@@ -49,7 +42,6 @@ $ pip install -r requirements.txt
+ - **PaddleOCR optimized for 8GB Macs**: Uses minimal resolution (320px) and single-threaded processing
+ - If you encounter issues with Pillow on Python 3.13, the installation process will automatically use a compatible version (Pillow 11.2.1+)
+ - Total installation size: ~500MB including all ML models
+-- The pipeline relies on `pdf2image` and `pytesseract` (installed via `pip`)
+ 
+ ### 2. Run the pipeline
+ From within the project directory:
+@@ -89,11 +81,11 @@ to persist to disk.
+ 
+ ### 4. Run tests
+ 
+-Run the full unit test suite with **pytest**. A successful run executes 54 tests:
++Run the full unit test suite with **pytest**. A successful run executes 52 tests:
+ 
+ ```bash
+ $ pytest -q
+-54 passed
++52 passed
+ ```
+ 
+ ## OCR Strategy & Supported Engines
+@@ -122,11 +114,8 @@ by each OCR engine.
+ | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+ 
+ **Configuration:**
+-Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
++Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). 
+ Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
+-EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
+-`PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to
+-override both engines with a single value.
+ 
+ ## Hard‑coded API keys
+ 
+@@ -134,10 +123,6 @@ override both engines with a single value.
+ 
+ * **OpenAI GPT‑4o** – `OPENAI_API_KEY`
+ 
+-When processing image files, the pipeline will automatically call GPT‑4o as a
+-fallback if OCR confidence is low. The key is defined directly in `config.py` as
+-`OPENAI_API_KEY`.
+-
+ > **Important**: Keys are fake placeholders. Replace them with real credentials
+ > before first run. Hard‑coding is **not** recommended in production.
+ 
+diff --git a/pipeline.py b/pipeline.py
+index 2917fb8..e101384 100644
+--- a/pipeline.py
++++ b/pipeline.py
+@@ -10,24 +10,9 @@ import math
+ import re
+ import sys
+ import hashlib
+-import base64
+-import os
+ from dataclasses import dataclass
+ from pathlib import Path
+ from typing import Any, Dict, List
+-import types
+-
+-try:
+-    import openai  # type: ignore
+-except Exception:  # pragma: no cover - optional dependency
+-    class _DummyCompletion:
+-        def create(self, *_, **__):
+-            raise RuntimeError("openai package is required")
+-
+-    class _DummyChat:
+-        completions = _DummyCompletion()
+-
+-    openai = types.SimpleNamespace(chat=_DummyChat())
+ 
+ # Python 3.13 compatibility shim for PaddleOCR
+ try:
+@@ -38,7 +23,6 @@ except ImportError:
+ 
+ # Direct execution: python pipeline.py
+ import config
+-from config import PADDLEOCR_LANG, OCR_LANG
+ from config import *
+ 
+ try:
+@@ -208,7 +192,7 @@ def _paddleocr_ocr(image) -> OcrResult:
+             gc.collect()
+             
+             _paddleocr_ocr.reader = PaddleOCR(
+-                lang=OCR_LANG if OCR_LANG else PADDLEOCR_LANG,
++                lang='en',
+                 use_gpu=False,
+                 use_angle_cls=False,
+                 show_log=False,
+@@ -346,58 +330,6 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
+     else:
+         raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
+ 
+-
+-def gpt4o_fallback(image_path: Path) -> Dict[str, int]:
+-    """Call OpenAI GPT-4o vision model to extract fields directly from an image."""
+-    api_key = config.OPENAI_API_KEY
+-    if not api_key:
+-        LOGGER.warning("OpenAI API key not configured; skipping LLM fallback")
+-        return {}
+-
+-    openai.api_key = api_key
+-
+-    try:
+-        img_bytes = image_path.read_bytes()
+-        b64 = base64.b64encode(img_bytes).decode("utf-8")
+-        fmt = image_path.suffix.lstrip(".") or "png"
+-        image_url = f"data:image/{fmt};base64,{b64}"
+-
+-        resp = openai.chat.completions.create(
+-            model=config.OPENAI_MODEL,
+-            messages=[
+-                {
+-                    "role": "user",
+-                    "content": [
+-                        {
+-                            "type": "text",
+-                            "text": (
+-                                "Extract the electricity consumption in kWh and "
+-                                "carbon footprint in kgCO2e from this utility bill "
+-                                "image. Reply with JSON keys 'electricity_kwh' "
+-                                "and 'carbon_kgco2e'."
+-                            ),
+-                        },
+-                        {"type": "image_url", "image_url": {"url": image_url}},
+-                    ],
+-                }
+-            ],
+-            response_format={"type": "json_object"},
+-            max_tokens=50,
+-            temperature=0,
+-        )
+-
+-        content = resp.choices[0].message.content
+-        data = json.loads(content)
+-        out = {}
+-        if "electricity_kwh" in data and data["electricity_kwh"] is not None:
+-            out["electricity_kwh"] = int(data["electricity_kwh"])
+-        if "carbon_kgco2e" in data and data["carbon_kgco2e"] is not None:
+-            out["carbon_kgco2e"] = int(data["carbon_kgco2e"])
+-        return out
+-    except Exception as exc:  # pragma: no cover - network errors
+-        LOGGER.warning("GPT-4o fallback failed: %s", exc)
+-        return {}
+-
+ def run_ocr(file_path: Path) -> OcrResult:
+     """Cascaded OCR: digital pass ➜ bitmap pass ➜ enhancer."""
+     # Check if file is an image
+@@ -442,23 +374,7 @@ def run_ocr(file_path: Path) -> OcrResult:
+         LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
+         return enhanced
+     else:
+-        # For images, invoke LLM fallback if confidence is low
+-        if result.field_confidence < TAU_LLM_PASS:
+-            LOGGER.warning(
+-                "OCR confidence (%.2f) below LLM threshold (%.2f)",
+-                result.field_confidence,
+-                TAU_LLM_PASS,
+-            )
+-            LOGGER.info("Running GPT-4o vision fallback…")
+-            llm_fields = gpt4o_fallback(file_path)
+-            text_parts = []
+-            if "electricity_kwh" in llm_fields:
+-                text_parts.append(f"Electricity {llm_fields['electricity_kwh']} kWh")
+-            if "carbon_kgco2e" in llm_fields:
+-                text_parts.append(f"Carbon {llm_fields['carbon_kgco2e']} kg")
+-            llm_text = " ".join(text_parts)
+-            return OcrResult(text=llm_text, tokens=text_parts, confidences=[1.0] * len(text_parts))
+-
++        # For images, just return the result as enhancement is not applicable
+         LOGGER.info("Image processing complete (%.2f)", result.field_confidence)
+         return result
+ 
+diff --git a/tests/test_hyperparams.py b/tests/test_hyperparams.py
+index 2b56bc0..8b15d86 100644
+--- a/tests/test_hyperparams.py
++++ b/tests/test_hyperparams.py
+@@ -2,7 +2,6 @@
+ """Test different hyperparameter configurations to find optimal settings."""
+ 
+ import json
+-import re
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -20,61 +19,89 @@ configs = [
+ 
+ ORIGINAL_CONFIG = Path("config.py").read_text()
+ 
+-
+ def update_config(tau_accept, tau_enhance, tau_llm, dpi_primary, dpi_enhanced):
+-    """Update config.py with new values using regex replacements."""
+-    updated = ORIGINAL_CONFIG
+-    updated = re.sub(
+-        r"TAU_FIELD_ACCEPT\s*=.*",
+-        f"TAU_FIELD_ACCEPT  = {tau_accept}",
+-        updated,
+-    )
+-    updated = re.sub(
+-        r"TAU_ENHANCER_PASS\s*=.*",
+-        f"TAU_ENHANCER_PASS = {tau_enhance}",
+-        updated,
+-    )
+-    updated = re.sub(
+-        r"TAU_LLM_PASS\s*=.*",
+-        f"TAU_LLM_PASS      = {tau_llm}",
+-        updated,
+-    )
+-    updated = re.sub(
+-        r"DPI_PRIMARY\s*=.*",
+-        f"DPI_PRIMARY       = {dpi_primary}",
+-        updated,
+-    )
+-    updated = re.sub(
+-        r"DPI_ENHANCED\s*=.*",
+-        f"DPI_ENHANCED      = {dpi_enhanced}",
+-        updated,
+-    )
+-    Path("config.py").write_text(updated)
++    """Update config.py with new values."""
++    config_content = f'''
++"""Central configuration – hard‑coded secrets & thresholds"""
++
++
++# --- OCR back‑end selection --------------------------------------------------
++# Options: "tesseract", "easyocr", "paddleocr"
++OCR_BACKEND       = "tesseract"
++
++# --- Confidence thresholds ---------------------------------------------------
++TAU_FIELD_ACCEPT  = {tau_accept}  # auto‑accept threshold
++TAU_ENHANCER_PASS = {tau_enhance}  # after enhancer / alt engine
++TAU_LLM_PASS      = {tau_llm}  # LLM fallback
++
++# --- Misc --------------------------------------------------------------------
++MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads
++DPI_PRIMARY       = {dpi_primary}
++DPI_ENHANCED      = {dpi_enhanced}
++
++# --- Tesseract options -------------------------------------------------------
++# Language, OCR engine mode and page segmentation mode can be tuned depending
++# on the type of documents processed. They are exposed here so that pipeline
++# users can adjust them without touching the codebase.
++TESSERACT_LANG    = "eng"
++TESSERACT_OEM     = 3     # default LSTM engine
++TESSERACT_PSM     = 6     # assume a single uniform block of text
++
++
++
++'''
++    Path("config.py").write_text(config_content)
+ 
+ @pytest.mark.parametrize("config_params", configs)
+ def test_config(config_params):
+-    """Compile pipeline with different configuration values."""
++    """Test a configuration and return results."""
+     tau_accept, tau_enhance, tau_llm, dpi_primary, dpi_enhanced = config_params
+-
++    
++    print(f"Testing: TAU_ACCEPT={tau_accept}, TAU_ENHANCE={tau_enhance}, TAU_LLM={tau_llm}, DPI={dpi_primary}/{dpi_enhanced}")
++    
+     update_config(tau_accept, tau_enhance, tau_llm, dpi_primary, dpi_enhanced)
+-
++    
+     try:
+-        cfg = Path("config.py").read_text()
+-        assert f"TAU_FIELD_ACCEPT  = {tau_accept}" in cfg
+-        assert f"TAU_ENHANCER_PASS = {tau_enhance}" in cfg
+-        assert f"TAU_LLM_PASS      = {tau_llm}" in cfg
+-        assert f"DPI_PRIMARY       = {dpi_primary}" in cfg
+-        assert f"DPI_ENHANCED      = {dpi_enhanced}" in cfg
+-
+-        result = subprocess.run(
+-            [sys.executable, "-m", "py_compile", "pipeline.py"],
+-            capture_output=True,
+-            text=True,
+-            timeout=10,
+-        )
+-        assert result.returncode == 0, result.stderr
+-
++        # Run pipeline and capture output
++        result = subprocess.run([
++            sys.executable, "pipeline.py", "ActualbillDownload_250618_115704.pdf"
++        ], capture_output=True, text=True, timeout=30)
++        
++        if result.returncode == 0:
++            # Parse JSON output
++            try:
++                data = json.loads(result.stdout)
++                confidence = data.get("meta", {}).get("extraction_confidence", 0)
++                electricity = data.get("electricity", {}).get("consumption", {}).get("value")
++                carbon = data.get("carbon", {}).get("location_based", {}).get("value")
++                
++                # Count log messages to understand processing path
++                stderr_lines = result.stderr.split('\n')
++                primary_pass = any("Primary pass accepted" in line for line in stderr_lines)
++                enhancement = any("Enhancement triggered" in line for line in stderr_lines)
++                llm_warning = any("below LLM threshold" in line for line in stderr_lines)
++                
++                return {
++                    "config": config_params,
++                    "confidence": confidence,
++                    "electricity": electricity,
++                    "carbon": carbon,
++                    "primary_pass": primary_pass,
++                    "enhancement": enhancement,
++                    "llm_warning": llm_warning,
++                    "success": True
++                }
++            except json.JSONDecodeError:
++                return {"config": config_params, "success": False, "error": "JSON decode error"}
++        else:
++            return {"config": config_params, "success": False, "error": result.stderr}
++    
++    except subprocess.TimeoutExpired:
++        return {"config": config_params, "success": False, "error": "Timeout"}
++    except Exception as e:
++            return {"config": config_params, "success": False, "error": str(e)}
+     finally:
++        # Restore original configuration after each run
+         Path("config.py").write_text(ORIGINAL_CONFIG)
+ 
+ # The original script provided a CLI for experimentation. The pytest version
+diff --git a/tests/test_multilingual.py b/tests/test_multilingual.py
+deleted file mode 100644
+index 4323f27..0000000
+--- a/tests/test_multilingual.py
++++ /dev/null
+@@ -1,54 +0,0 @@
+-import sys
+-import pathlib
+-from unittest.mock import Mock, patch
+-
+-sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
+-import pipeline
+-import config
+-
+-
+-@patch('pipeline.np')
+-@patch('pipeline._auto_rotate', return_value=Mock())
+-@patch('pipeline.preprocess_image', return_value=Mock())
+-@patch('pipeline.pytesseract')
+-@patch('pipeline.easyocr')
+-@patch('pipeline.PaddleOCR')
+-def test_language_settings(mock_paddle, mock_easyocr, mock_tess_mod, mock_pre, mock_rot, mock_np):
+-    # Setup mocks
+-    mock_np.array.return_value = Mock()
+-    mock_tess_mod.image_to_data.return_value = {'text': [], 'conf': []}
+-    reader_inst = Mock(readtext=Mock(return_value=[]))
+-    mock_easyocr.Reader.return_value = reader_inst
+-    paddle_inst = Mock(ocr=Mock(return_value=[]))
+-    mock_paddle.return_value = paddle_inst
+-
+-    # Remove cached readers
+-    for attr in ('reader',):
+-        if hasattr(pipeline._easyocr_ocr, attr):
+-            delattr(pipeline._easyocr_ocr, attr)
+-        if hasattr(pipeline._paddleocr_ocr, attr):
+-            delattr(pipeline._paddleocr_ocr, attr)
+-
+-    with patch.object(pipeline, 'TESSERACT_LANG', 'fra'), \
+-         patch.object(pipeline, 'EASYOCR_LANG', ['en', 'fr']), \
+-         patch.object(pipeline, 'PADDLEOCR_LANG', 'fr'), \
+-         patch.object(pipeline, 'OCR_LANG', None), \
+-         patch.object(config, 'EASYOCR_LANG', ['en', 'fr']), \
+-         patch.object(config, 'PADDLEOCR_LANG', 'fr'), \
+-         patch.object(config, 'OCR_LANG', None):
+-        img = Mock(mode='RGB')
+-        pipeline._tesseract_ocr(img)
+-        pipeline._easyocr_ocr(img)
+-        pipeline._paddleocr_ocr(img)
+-
+-    assert mock_tess_mod.image_to_data.call_args.kwargs['lang'] == 'fra'
+-    mock_easyocr.Reader.assert_called_once_with(['en', 'fr'], gpu=pipeline.EASYOCR_GPU)
+-    assert mock_paddle.call_args.kwargs['lang'] == 'fr'
+-
+-    # Test global override
+-    mock_paddle.reset_mock()
+-    if hasattr(pipeline._paddleocr_ocr, 'reader'):
+-        delattr(pipeline._paddleocr_ocr, 'reader')
+-    with patch.object(pipeline, 'OCR_LANG', 'es'):
+-        pipeline._paddleocr_ocr(img)
+-    assert mock_paddle.call_args.kwargs['lang'] == 'es'
+diff --git a/tests/test_tesseract_config.py b/tests/test_tesseract_config.py
+index b42208b..d3e3f7b 100644
+--- a/tests/test_tesseract_config.py
++++ b/tests/test_tesseract_config.py
+@@ -1,7 +1,6 @@
+ #!/usr/bin/env python3
+ """Test different Tesseract configurations."""
+ 
+-import re
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -10,12 +9,37 @@ import pytest
+ ORIGINAL_CONFIG = Path("config.py").read_text()
+ 
+ def update_tesseract_config(lang, oem, psm):
+-    """Update Tesseract configuration in config.py using regex."""
+-    updated = ORIGINAL_CONFIG
+-    updated = re.sub(r"TESSERACT_LANG\s*=.*", f'TESSERACT_LANG    = "{lang}"', updated)
+-    updated = re.sub(r"TESSERACT_OEM\s*=.*", f"TESSERACT_OEM     = {oem}", updated)
+-    updated = re.sub(r"TESSERACT_PSM\s*=.*", f"TESSERACT_PSM     = {psm}", updated)
+-    Path("config.py").write_text(updated)
++    """Update Tesseract configuration in config.py."""
++    config_content = f'''
++"""Central configuration – hard‑coded secrets & thresholds"""
++
++
++# --- OCR back‑end selection --------------------------------------------------
++# Options: "tesseract", "easyocr", "paddleocr"
++OCR_BACKEND       = "tesseract"
++
++# --- Confidence thresholds ---------------------------------------------------
++TAU_FIELD_ACCEPT  = 0.95  # auto‑accept threshold
++TAU_ENHANCER_PASS = 0.9  # after enhancer / alt engine
++TAU_LLM_PASS      = 0.85  # LLM fallback
++
++# --- Misc --------------------------------------------------------------------
++MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads
++DPI_PRIMARY       = 300
++DPI_ENHANCED      = 600
++
++# --- Tesseract options -------------------------------------------------------
++# Language, OCR engine mode and page segmentation mode can be tuned depending
++# on the type of documents processed. They are exposed here so that pipeline
++# users can adjust them without touching the codebase.
++TESSERACT_LANG    = "{lang}"
++TESSERACT_OEM     = {oem}     # OCR Engine Mode
++TESSERACT_PSM     = {psm}     # Page Segmentation Mode
++
++
++
++'''
++    Path("config.py").write_text(config_content)
+ 
+ @pytest.mark.parametrize(
+     "lang,oem,psm,description",
+@@ -35,21 +59,23 @@ def test_tesseract_config(lang, oem, psm, description):
+     print(f"\nTesting {description}: LANG={lang}, OEM={oem}, PSM={psm}")
+     
+     update_tesseract_config(lang, oem, psm)
+-
++    
+     try:
+-        cfg = Path("config.py").read_text()
+-        assert f'TESSERACT_LANG    = "{lang}"' in cfg
+-        assert f"TESSERACT_OEM     = {oem}" in cfg
+-        assert f"TESSERACT_PSM     = {psm}" in cfg
+-
+-        result = subprocess.run(
+-            [sys.executable, "-m", "py_compile", "pipeline.py"],
+-            capture_output=True,
+-            text=True,
+-            timeout=10,
+-        )
+-        assert result.returncode == 0, result.stderr
+-
++        # Test compilation first
++        result = subprocess.run([
++            sys.executable, "-m", "py_compile", "pipeline.py"
++        ], capture_output=True, text=True, timeout=10)
++        
++        if result.returncode == 0:
++            print("  ✓ Configuration valid and compiles successfully")
++            return True
++        else:
++            print(f"  ✗ Compilation failed: {result.stderr}")
++            return False
++            
++    except Exception as e:
++        print(f"  ✗ Error: {e}")
++        return False
+     finally:
+         Path("config.py").write_text(ORIGINAL_CONFIG)
+ 

@@ -25,7 +25,14 @@ ocr_pipeline/
 
 ## Installation & Quick‑start
 
-### 1. Set up virtual environment
+### System packages
+Install `tesseract-ocr` and `poppler-utils` via `apt` before installing Python dependencies:
+
+```bash
+$ sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
+```
+
+### 1. Set up the `venv` virtual environment
 
 **Requirements:** Python 3.8+ (tested with Python 3.13)
 
@@ -42,6 +49,7 @@ $ pip install -r requirements.txt
 - **PaddleOCR optimized for 8GB Macs**: Uses minimal resolution (320px) and single-threaded processing
 - If you encounter issues with Pillow on Python 3.13, the installation process will automatically use a compatible version (Pillow 11.2.1+)
 - Total installation size: ~500MB including all ML models
+- The pipeline relies on `pdf2image` and `pytesseract` (installed via `pip`)
 
 ### 2. Run the pipeline
 From within the project directory:
@@ -81,11 +89,11 @@ to persist to disk.
 
 ### 4. Run tests
 
-Run the full unit test suite with **pytest**. A successful run executes 52 tests:
+Run the full unit test suite with **pytest**. A successful run executes 54 tests:
 
 ```bash
 $ pytest -q
-52 passed
+54 passed
 ```
 
 ## OCR Strategy & Supported Engines
@@ -114,8 +122,11 @@ by each OCR engine.
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 
 **Configuration:**
-Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). 
+Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
 Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
+EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
+`PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to
+override both engines with a single value.
 
 ## Hard‑coded API keys
 

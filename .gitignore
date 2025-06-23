@@ -2,11 +2,15 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Test/sample files
+# Test/sample files (exclude critical test files)
 *.png
 *.pdf
 *.jpg
 *.jpeg
+
+# Important: DO NOT ignore these critical test files
+!ActualBill.pdf
+!ActualBill.png
 output_*.json
 imghdr.py
 
