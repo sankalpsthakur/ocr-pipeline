@@ -29,6 +29,11 @@ DPI_ENHANCED      = 600   # Enhanced DPI for low-confidence extractions
 TESSERACT_OEM     = 3     # OCR Engine Mode
 TESSERACT_PSM     = 6     # Page Segmentation Mode
 
+# --- Confidence thresholds ---------------------------------------------------
+TAU_FIELD_ACCEPT  = 0.95  # auto-accept threshold
+TAU_ENHANCER_PASS = 0.90  # after enhancer / alt engine
+TAU_LLM_PASS      = 0.85  # LLM fallback
+
 # --- OpenAI -------------------------------------------------------------------
 # Vision model used for LLM fallback
 OPENAI_MODEL      = "gpt-4o"
