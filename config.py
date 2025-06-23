@@ -1,7 +1,8 @@
 
 """Central configuration – hard‑coded secrets & thresholds"""
 
-
+# Optional global override for OCR language across all engines
+OCR_LANG = None
 # --- OCR back‑end selection --------------------------------------------------
 # Options: "tesseract", "easyocr", "paddleocr"
 OCR_BACKEND       = "paddleocr"
@@ -14,6 +15,7 @@ TAU_LLM_PASS      = 0.70  # LLM fallback
 # --- EasyOCR specific settings -----------------------------------------------
 EASYOCR_GPU       = False  # Set to True if GPU available for better performance
 EASYOCR_LANG      = ['en'] # Language support for EasyOCR
+PADDLEOCR_LANG    = 'en'   # Language support for PaddleOCR
 
 # --- Misc --------------------------------------------------------------------
 MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads
