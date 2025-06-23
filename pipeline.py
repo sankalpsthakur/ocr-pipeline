@@ -47,6 +47,10 @@ try:
     import easyocr
 except Exception:  # pragma: no cover - optional dependency
     easyocr = None
+try:
+    from paddleocr import PaddleOCR
+except Exception:  # pragma: no cover - optional dependency
+    PaddleOCR = None
 
 # Configuration imported from config.py
 
@@ -130,17 +134,25 @@ def _easyocr_ocr(image) -> OcrResult:
     if easyocr is None:
         raise RuntimeError("easyocr is not available")
     
-    # Initialize EasyOCR reader (cached after first use)
+    # Initialize EasyOCR reader (cached after first use) with optimized settings
     if not hasattr(_easyocr_ocr, "reader"):
-        _easyocr_ocr.reader = easyocr.Reader(['en'], gpu=False)
+        from config import EASYOCR_GPU, EASYOCR_LANG
+        _easyocr_ocr.reader = easyocr.Reader(EASYOCR_LANG, gpu=EASYOCR_GPU)
     
     # Convert PIL image to numpy array
     if np is None:
         raise RuntimeError("numpy is required for EasyOCR")
     img_array = np.array(image)
     
-    # Run EasyOCR
-    results = _easyocr_ocr.reader.readtext(img_array, detail=1)
+    # Run EasyOCR with accuracy-focused parameters
+    results = _easyocr_ocr.reader.readtext(
+        img_array, 
+        detail=1,
+        paragraph=False,  # Better for structured documents
+        width_ths=0.7,    # Optimized width threshold for better text detection
+        height_ths=0.7,   # Optimized height threshold
+        mag_ratio=1.2     # Moderate magnification ratio for balance
+    )
     
     tokens = []
     confidences = []
@@ -151,6 +163,48 @@ def _easyocr_ocr(image) -> OcrResult:
             tokens.append(text)
             confidences.append(float(conf))
             text_parts.append(text)
+    
+    joined = " ".join(text_parts)
+    return OcrResult(text=joined, tokens=tokens, confidences=confidences)
+
+def _paddleocr_ocr(image) -> OcrResult:
+    if PaddleOCR is None:
+        raise RuntimeError("paddleocr is not available")
+    
+    # Initialize simple PaddleOCR (cached after first use)
+    if not hasattr(_paddleocr_ocr, "reader"):
+        _paddleocr_ocr.reader = PaddleOCR(lang='en')
+    
+    # Convert PIL image to numpy array and ensure correct format
+    if np is None:
+        raise RuntimeError("numpy is required for PaddleOCR")
+    
+    # Convert to RGB if necessary
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    img_array = np.array(image)
+    
+    # Use PaddleOCR
+    try:
+        results = _paddleocr_ocr.reader.ocr(img_array)
+    except Exception as e:
+        LOGGER.warning(f"PaddleOCR failed: {e}")
+        return OcrResult("", [], [])
+    
+    tokens = []
+    confidences = []
+    text_parts = []
+    
+    # Process PaddleOCR results
+    if results and results[0]:
+        for line in results[0]:
+            if line and len(line) >= 2:
+                bbox, (text, conf) = line[0], line[1]
+                if text and text.strip():
+                    tokens.append(text)
+                    confidences.append(float(conf))
+                    text_parts.append(text)
     
     joined = " ".join(text_parts)
     return OcrResult(text=joined, tokens=tokens, confidences=confidences)
@@ -200,6 +254,21 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
             joined, tok, conf = "", [], []
             for img in images:
                 res = _easyocr_ocr(img)
+                joined += res.text + "\n"
+                tok.extend(res.tokens)
+                conf.extend(res.confidences)
+            return OcrResult(joined, tok, conf)
+    elif OCR_BACKEND == "paddleocr":
+        if is_image:
+            # Process single image file
+            img = load_image(file_path)
+            return _paddleocr_ocr(img)
+        else:
+            # Process PDF
+            images = pdf_to_images(file_path, dpi=dpi)
+            joined, tok, conf = "", [], []
+            for img in images:
+                res = _paddleocr_ocr(img)
                 joined += res.text + "\n"
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
