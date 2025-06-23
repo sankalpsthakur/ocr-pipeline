@@ -327,12 +327,6 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
             return OcrResult(joined, tok, conf)
-    elif OCR_BACKEND == "gcv":
-        # Google Cloud Vision implementation would go here
-        raise NotImplementedError("Google Cloud Vision backend not implemented")
-    elif OCR_BACKEND == "azure":
-        # Azure Form Recognizer implementation would go here
-        raise NotImplementedError("Azure Form Recognizer backend not implemented")
     else:
         raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
 
@@ -392,7 +386,8 @@ ENERGY_RE = re.compile(r"(?:consumption|consumed|usage|total|reading).*?(\d{1,4}
 # Fallback 1: DEWA bill format - number followed by "Electricity" (for cases like "299  Electricity")
 ENERGY_DEWA_RE = re.compile(r"\b(\d{2,4})\s+Electricity", re.I)
 # Fallback 2: standalone kWh values in reasonable range
-ENERGY_FALLBACK_RE = re.compile(r"\b(\d{1,4})\s*k\s*W\s*h", re.I)
+# Fallback pattern allowing spaces or commas inside the number (e.g. "1 234 kWh")
+ENERGY_FALLBACK_RE = re.compile(r"\b(\d[\d\s,]{0,6})\s*k\s*W\s*h", re.I)
 # Improved carbon regex to handle OCR errors like "coze", "C0Ze" instead of "CO2e" 
 CARBON_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)e|co(?:2|\u2082)e|coze|C0Ze)\s+(\d[\d\s,]{0,10})", re.I)
 # Alternative carbon patterns - look for carbon footprint value (typically 2-4 digits)

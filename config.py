@@ -3,7 +3,7 @@
 
 
 # --- OCR back‑end selection --------------------------------------------------
-# Options: "tesseract", "easyocr", "paddleocr", "gcv", "azure"
+# Options: "tesseract", "easyocr", "paddleocr"
 OCR_BACKEND       = "paddleocr"
 
 # --- Confidence thresholds (optimized for accuracy) -------------------------
