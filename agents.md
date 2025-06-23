@@ -43,18 +43,22 @@ The pipeline supports multiple OCR backends:
 
 2. **Test with Images**:
    ```bash
-   python pipeline.py ActualBill.png
+   python pipeline.py ActualBill.png --lang eng
    ```
 
 3. **Test with PDFs**:
    ```bash
-   python pipeline.py ActualBill.pdf
+   python pipeline.py ActualBill.pdf --lang eng+deu
    ```
 
 4. **Run Test Suite**:
    ```bash
    pytest -q  # Should show 54 passed tests
    ```
+
+If `--lang` is omitted, the first 200 characters are analysed with a fastText
+model to guess the best language pack. Detected font attributes (monospace or
+handwritten) are logged for troubleshooting.
 
 ### Test Results with ActualBill Files
 

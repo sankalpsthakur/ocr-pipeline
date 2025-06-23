@@ -15,6 +15,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
+
+import requests
+try:
+    import fasttext
+except Exception:  # pragma: no cover - optional dependency
+    fasttext = None
 import types
 
 try:
@@ -80,6 +86,12 @@ except Exception:  # pragma: no cover - optional dependency
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
 
+# Local cache for Tesseract traineddata and fastText model
+DATA_DIR = Path.home() / ".cache" / "ocr_pipeline"
+TESSDATA_DIR = DATA_DIR / "tessdata"
+FASTTEXT_MODEL = DATA_DIR / "lid.176.ftz"
+TESSDATA_REPO = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main"
+
 # -----------------------------------------------------------------------------
 # OCR helpers
 # -----------------------------------------------------------------------------
@@ -122,20 +134,101 @@ def preprocess_image(image):
     return np.array(image.convert("L"))
 
 
-def _tesseract_ocr(image) -> OcrResult:
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ensure_traineddata(lang: str) -> Path:
+    """Download Tesseract traineddata if missing and validate checksum."""
+    TESSDATA_DIR.mkdir(parents=True, exist_ok=True)
+    td_path = TESSDATA_DIR / f"{lang}.traineddata"
+    if not td_path.exists():
+        url = f"{TESSDATA_REPO}/{lang}.traineddata"
+        try:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            td_path.write_bytes(resp.content)
+        except Exception as exc:  # pragma: no cover - network errors
+            LOGGER.warning("Failed to fetch traineddata %s: %s", lang, exc)
+            return td_path
+
+    # Validate checksum if SHA256SUMS available
+    try:
+        sums = requests.get(f"{TESSDATA_REPO}/SHA256SUMS", timeout=10)
+        if sums.ok:
+            for line in sums.text.splitlines():
+                if line.endswith(f" {lang}.traineddata"):
+                    expected = line.split()[0]
+                    actual = sha256_file(td_path)
+                    if actual != expected:
+                        LOGGER.warning(
+                            "Checksum mismatch for %s (expected %s, got %s)",
+                            lang,
+                            expected,
+                            actual,
+                        )
+                    break
+    except Exception as exc:  # pragma: no cover - network errors
+        LOGGER.debug("Checksum fetch failed: %s", exc)
+    return td_path
+
+
+_FT_MODEL = None
+
+
+def detect_language(text: str) -> str:
+    """Detect language using fastText model."""
+    global _FT_MODEL
+    if fasttext is None:
+        return "eng"
+    if _FT_MODEL is None:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not FASTTEXT_MODEL.exists():
+            try:
+                resp = requests.get(
+                    "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz",
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                FASTTEXT_MODEL.write_bytes(resp.content)
+            except Exception as exc:  # pragma: no cover - network errors
+                LOGGER.warning("Failed to download fastText model: %s", exc)
+                return "eng"
+        _FT_MODEL = fasttext.load_model(str(FASTTEXT_MODEL))
+    label = _FT_MODEL.predict(text[:200].replace("\n", " "))[0][0]
+    return label.replace("__label__", "")
+
+
+def _tesseract_ocr(image, lang: str = None) -> OcrResult:
     if pytesseract is None:
         raise RuntimeError("pytesseract is not available")
     image = _auto_rotate(image)
     img = preprocess_image(image)
     if img is None:
         img = image
-    config = f"--oem {TESSERACT_OEM} --psm {TESSERACT_PSM}"
+    lang_code = lang or TESSERACT_LANG
+    for code in lang_code.split('+'):
+        ensure_traineddata(code)
+    config = f"--oem {TESSERACT_OEM} --psm {TESSERACT_PSM} --tessdata-dir {TESSDATA_DIR} --fontinfo 1"
     data = pytesseract.image_to_data(
         img,
-        lang=TESSERACT_LANG,
+        lang=lang_code,
         config=config,
         output_type=pytesseract.Output.DICT,
     )
+
+    fonts = set()
+    for attr in data.get("font", []):
+        if attr and "mono" in attr.lower():
+            fonts.add("monospace")
+        if attr and "hand" in attr.lower():
+            fonts.add("handwritten")
+    if fonts:
+        LOGGER.info("Font attributes: %s", ",".join(sorted(fonts)))
     
     # Filter tokens: remove empty text and negative confidence
     filtered_tokens = []
@@ -296,19 +389,18 @@ def load_image(image_path: Path):
         raise RuntimeError("PIL is not available")
     return Image.open(str(image_path))
 
-def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) -> OcrResult:
+def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False, lang: str = None) -> OcrResult:
     """Run OCR using the configured backend engine."""
     if OCR_BACKEND == "tesseract":
         if is_image:
-            # Process single image file
             img = load_image(file_path)
-            return _tesseract_ocr(img)
+            return _tesseract_ocr(img, lang=lang)
         else:
             # Process PDF (existing logic)
             images = pdf_to_images(file_path, dpi=dpi)
             joined, tok, conf = "", [], []
             for img in images:
-                res = _tesseract_ocr(img)
+                res = _tesseract_ocr(img, lang=lang)
                 joined += res.text + "\n"
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
@@ -398,7 +490,7 @@ def gpt4o_fallback(image_path: Path) -> Dict[str, int]:
         LOGGER.warning("GPT-4o fallback failed: %s", exc)
         return {}
 
-def run_ocr(file_path: Path) -> OcrResult:
+def run_ocr(file_path: Path, lang: str = None) -> OcrResult:
     """Cascaded OCR: digital pass ➜ bitmap pass ➜ enhancer."""
     # Check if file is an image
     is_image = file_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
@@ -415,10 +507,10 @@ def run_ocr(file_path: Path) -> OcrResult:
     # Primary OCR pass
     if is_image:
         LOGGER.info("Running primary OCR pass on image with %s backend…", OCR_BACKEND)
-        result = _run_ocr_engine(file_path, is_image=True)
+        result = _run_ocr_engine(file_path, is_image=True, lang=lang)
     else:
         LOGGER.info("Running primary OCR pass at %d dpi with %s backend…", DPI_PRIMARY, OCR_BACKEND)
-        result = _run_ocr_engine(file_path, dpi=DPI_PRIMARY)
+        result = _run_ocr_engine(file_path, dpi=DPI_PRIMARY, lang=lang)
     
     if result.field_confidence >= TAU_FIELD_ACCEPT:
         LOGGER.info("Primary pass accepted (%.2f)", result.field_confidence)
@@ -427,7 +519,7 @@ def run_ocr(file_path: Path) -> OcrResult:
     # Enhancement pass (for PDFs only)
     if not is_image:
         LOGGER.info("Enhancement triggered – running at %d dpi…", DPI_ENHANCED)
-        enhanced = _run_ocr_engine(file_path, dpi=DPI_ENHANCED)
+        enhanced = _run_ocr_engine(file_path, dpi=DPI_ENHANCED, lang=lang)
         
         if enhanced.field_confidence >= TAU_ENHANCER_PASS:
             LOGGER.info("Enhancement pass accepted (%.2f)", enhanced.field_confidence)
@@ -568,14 +660,17 @@ def build_payload(fields: Dict[str, Any], source_path: Path) -> Dict[str, Any]:
 # CLI
 # -----------------------------------------------------------------------------
 def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python pipeline.py bill.[pdf|png] [--save outfile.json]")
-        sys.exit(1)
+    import argparse
 
-    file_path = Path(sys.argv[1])
-    save_path = None
-    if "--save" in sys.argv:
-        save_path = Path(sys.argv[sys.argv.index("--save") + 1])
+    parser = argparse.ArgumentParser(description="OCR pipeline")
+    parser.add_argument("file", help="input file")
+    parser.add_argument("--save", dest="save", metavar="OUT")
+    parser.add_argument("--lang", dest="lang")
+    args = parser.parse_args()
+
+    file_path = Path(args.file)
+    save_path = Path(args.save) if args.save else None
+    lang = args.lang
 
     # Check if file exists and has supported extension
     if not file_path.exists():
@@ -587,7 +682,22 @@ def main() -> None:
         print(f"Error: Unsupported file type '{file_path.suffix}'. Supported: {', '.join(supported_extensions)}")
         sys.exit(1)
 
-    ocr_res = run_ocr(file_path)
+    if not lang:
+        try:
+            # Quick text extraction for language ID
+            if extract_text and file_path.suffix.lower() == '.pdf':
+                sample = extract_text(str(file_path), maxpages=1) or ''
+            else:
+                img = load_image(file_path)
+                sample_res = _tesseract_ocr(img)
+                sample = sample_res.text
+            lang = detect_language(sample)
+            LOGGER.info("Auto-detected language: %s", lang)
+        except Exception as exc:
+            LOGGER.warning("Language detection failed: %s", exc)
+            lang = 'eng'
+
+    ocr_res = run_ocr(file_path, lang=lang)
     fields = extract_fields(ocr_res.text)
     fields["_confidence"] = ocr_res.field_confidence
 

@@ -54,13 +54,14 @@ $ pip install -r requirements.txt
 ### 2. Run the pipeline
 From within the project directory:
 ```bash
-$ python pipeline.py utility_bill.pdf
-$ python pipeline.py Actualbill.png
+$ python pipeline.py utility_bill.pdf --lang eng
+$ python pipeline.py Actualbill.png --lang eng+deu
 $ python pipeline.py bill_image.jpg
 ```
 
 The script prints the JSON payload to `stdout`. Add `--save output.json`
-to persist to disk.
+to persist to disk. If `--lang` is omitted, the first 200 characters are
+analysed with a fastText model to auto-select the best language pack.
 
 ### 3. Example output
 ```json
@@ -101,9 +102,11 @@ $ pytest -q
 1. **Digital text pass** – `pdfminer.six` (vector PDFs only).
 2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.
 3. **Orientation check** – pages are auto‑rotated using Tesseract OSD.
-4. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
+4. **Font attributes** – monospace or handwritten fonts are logged via
+   Tesseract's font‑attr API.
+5. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
    **or** switch to an alternate engine (`OCR_BACKEND="easyocr"` or `"paddleocr"`).
-5. **LLM fallback** – optional: set `USE_LLM_FALLBACK=True` in `config.py`.
+6. **LLM fallback** – optional: set `USE_LLM_FALLBACK=True` in `config.py`.
 
 Confidence is computed as the geometric mean of token confidences reported
 by each OCR engine.
