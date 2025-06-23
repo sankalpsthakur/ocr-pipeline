@@ -14,6 +14,7 @@ These files are essential for testing the OCR pipeline across different formats 
 - Python 3.13.2
 - Virtual environment: `venv/`
 - Dependencies installed from `requirements.txt`
+- System packages `tesseract-ocr` and `poppler-utils` installed via `apt`
 
 ### OCR Pipeline Structure
 The pipeline supports multiple OCR backends:
@@ -35,7 +36,9 @@ The pipeline supports multiple OCR backends:
 
 1. **Environment Setup**:
    ```bash
+   sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
    source venv/bin/activate
+   pip install -r requirements.txt
    ```
 
 2. **Test with Images**:

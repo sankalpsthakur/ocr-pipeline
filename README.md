@@ -25,6 +25,13 @@ ocr_pipeline/
 
 ## Installation & Quick‑start
 
+### System packages
+Install `tesseract-ocr` and `poppler-utils` via `apt` before installing Python dependencies:
+
+```bash
+$ sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
+```
+
 ### 1. Set up the `venv` virtual environment
 
 **Requirements:** Python 3.8+ (tested with Python 3.13)
@@ -42,6 +49,7 @@ $ pip install -r requirements.txt
 - **PaddleOCR optimized for 8GB Macs**: Uses minimal resolution (320px) and single-threaded processing
 - If you encounter issues with Pillow on Python 3.13, the installation process will automatically use a compatible version (Pillow 11.2.1+)
 - Total installation size: ~500MB including all ML models
+- The pipeline relies on `pdf2image` and `pytesseract` (installed via `pip`)
 
 ### 2. Run the pipeline
 From within the project directory:
