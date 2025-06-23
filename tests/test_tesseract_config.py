@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test different Tesseract configurations."""
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -9,37 +10,12 @@ import pytest
 ORIGINAL_CONFIG = Path("config.py").read_text()
 
 def update_tesseract_config(lang, oem, psm):
-    """Update Tesseract configuration in config.py."""
-    config_content = f'''
-"""Central configuration – hard‑coded secrets & thresholds"""
-
-
-# --- OCR back‑end selection --------------------------------------------------
-# Options: "tesseract", "easyocr", "paddleocr"
-OCR_BACKEND       = "tesseract"
-
-# --- Confidence thresholds ---------------------------------------------------
-TAU_FIELD_ACCEPT  = 0.95  # auto‑accept threshold
-TAU_ENHANCER_PASS = 0.9  # after enhancer / alt engine
-TAU_LLM_PASS      = 0.85  # LLM fallback
-
-# --- Misc --------------------------------------------------------------------
-MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads
-DPI_PRIMARY       = 300
-DPI_ENHANCED      = 600
-
-# --- Tesseract options -------------------------------------------------------
-# Language, OCR engine mode and page segmentation mode can be tuned depending
-# on the type of documents processed. They are exposed here so that pipeline
-# users can adjust them without touching the codebase.
-TESSERACT_LANG    = "{lang}"
-TESSERACT_OEM     = {oem}     # OCR Engine Mode
-TESSERACT_PSM     = {psm}     # Page Segmentation Mode
-
-
-
-'''
-    Path("config.py").write_text(config_content)
+    """Update Tesseract configuration in config.py using regex."""
+    updated = ORIGINAL_CONFIG
+    updated = re.sub(r"TESSERACT_LANG\s*=.*", f'TESSERACT_LANG    = "{lang}"', updated)
+    updated = re.sub(r"TESSERACT_OEM\s*=.*", f"TESSERACT_OEM     = {oem}", updated)
+    updated = re.sub(r"TESSERACT_PSM\s*=.*", f"TESSERACT_PSM     = {psm}", updated)
+    Path("config.py").write_text(updated)
 
 @pytest.mark.parametrize(
     "lang,oem,psm,description",
@@ -59,23 +35,21 @@ def test_tesseract_config(lang, oem, psm, description):
     print(f"\nTesting {description}: LANG={lang}, OEM={oem}, PSM={psm}")
     
     update_tesseract_config(lang, oem, psm)
-    
+
     try:
-        # Test compilation first
-        result = subprocess.run([
-            sys.executable, "-m", "py_compile", "pipeline.py"
-        ], capture_output=True, text=True, timeout=10)
-        
-        if result.returncode == 0:
-            print("  ✓ Configuration valid and compiles successfully")
-            return True
-        else:
-            print(f"  ✗ Compilation failed: {result.stderr}")
-            return False
-            
-    except Exception as e:
-        print(f"  ✗ Error: {e}")
-        return False
+        cfg = Path("config.py").read_text()
+        assert f'TESSERACT_LANG    = "{lang}"' in cfg
+        assert f"TESSERACT_OEM     = {oem}" in cfg
+        assert f"TESSERACT_PSM     = {psm}" in cfg
+
+        result = subprocess.run(
+            [sys.executable, "-m", "py_compile", "pipeline.py"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+
     finally:
         Path("config.py").write_text(ORIGINAL_CONFIG)
 

@@ -134,6 +134,10 @@ override both engines with a single value.
 
 * **OpenAI GPT‑4o** – `OPENAI_API_KEY`
 
+When processing image files, the pipeline will automatically call GPT‑4o as a
+fallback if OCR confidence is low. The key is defined directly in `config.py` as
+`OPENAI_API_KEY`.
+
 > **Important**: Keys are fake placeholders. Replace them with real credentials
 > before first run. Hard‑coding is **not** recommended in production.
 
