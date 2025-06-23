@@ -81,11 +81,11 @@ to persist to disk.
 
 ### 4. Run tests
 
-Run the full unit test suite with **pytest**. A successful run executes 52 tests:
+Run the full unit test suite with **pytest**. A successful run executes 54 tests:
 
 ```bash
 $ pytest -q
-52 passed
+54 passed
 ```
 
 ## OCR Strategy & Supported Engines
