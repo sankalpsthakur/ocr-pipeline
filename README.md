@@ -25,7 +25,7 @@ ocr_pipeline/
 
 ## Installation & Quick‑start
 
-### 1. Set up virtual environment
+### 1. Set up the `venv` virtual environment
 
 **Requirements:** Python 3.8+ (tested with Python 3.13)
 
