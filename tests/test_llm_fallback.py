@@ -15,7 +15,8 @@ def test_gpt4o_fallback_parsing():
     dummy_response = DummyResp(json.dumps({"electricity_kwh": 250, "carbon_kgco2e": 100}))
 
     with patch.object(pipeline.config, "OPENAI_API_KEY", "sk-test"):
-        with patch("pipeline.openai.chat.completions.create", return_value=dummy_response):
+        with patch.object(pipeline, "openai") as mock_openai:
+            mock_openai.chat.completions.create.return_value = dummy_response
             tmp = pathlib.Path("dummy.png")
             tmp.write_bytes(b"fake")
             try:

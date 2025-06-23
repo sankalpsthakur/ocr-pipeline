@@ -113,9 +113,11 @@ by each OCR engine.
 | Method | Input Type | Confidence | Electricity | Carbon | Notes |
 |--------|------------|------------|-------------|---------|-------|
 | **OCR Engines (PNG Image)** |
-| Tesseract | PNG Image | 37.4% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction |
+| Tesseract | PNG Image | 60% | ✅ 299 kWh | ✅ 120 kgCO2e | Low confidence triggers LLM fallback |
 | EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction with enhanced patterns |
 | PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest confidence, complete extraction |
+| **LLM Fallback** |
+| GPT-4o Vision | PNG Image | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Vision model fallback when OCR confidence < 70% |
 | **Digital Text Extraction (PDF)** |
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 

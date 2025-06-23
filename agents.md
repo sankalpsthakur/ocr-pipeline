@@ -58,12 +58,19 @@ The pipeline supports multiple OCR backends:
 
 ### Test Results with ActualBill Files
 
-#### ActualBill.png (Tesseract backend)
+#### ActualBill.png (Tesseract backend with GPT-4o Fallback)
 - **Status**: ✅ PASSED
 - **Electricity**: 299 kWh
 - **Carbon**: 120 kgCO2e  
-- **Confidence**: 59.9%
-- **Processing time**: 0.60s
+- **OCR Confidence**: 60% (below 70% threshold)
+- **Fallback Triggered**: ✅ GPT-4o Vision API called
+- **Final Confidence**: 100% (LLM extraction)
+- **Processing flow**: 
+  1. Tesseract OCR extracted text with 60% confidence
+  2. Confidence below 70% threshold triggered LLM fallback
+  3. GPT-4o Vision API processed original image
+  4. LLM returned accurate JSON: `{"electricity_kwh": 299, "carbon_kgco2e": 120}`
+  5. Final extraction confidence: 100%
 
 #### ActualBill.pdf (Digital text extraction)
 - **Status**: ✅ PASSED
