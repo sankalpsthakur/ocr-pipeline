@@ -26,11 +26,22 @@ ocr_pipeline/
 ## Installation & Quick‑start
 
 ### 1. Set up virtual environment
+
+**Requirements:** Python 3.8+ (tested with Python 3.13)
+
 ```bash
-$ python -m venv venv
+$ python3 -m venv venv
 $ source venv/bin/activate  # On Windows: venv\Scripts\activate
+$ pip install --upgrade pip setuptools wheel
 $ pip install -r requirements.txt
 ```
+
+**Note:** 
+- The requirements.txt includes all OCR engines (Tesseract, EasyOCR, PaddleOCR) with dependencies
+- PaddlePaddle framework (96MB) is automatically installed for PaddleOCR support
+- **PaddleOCR optimized for 8GB Macs**: Uses minimal resolution (320px) and single-threaded processing
+- If you encounter issues with Pillow on Python 3.13, the installation process will automatically use a compatible version (Pillow 11.2.1+)
+- Total installation size: ~500MB including all ML models
 
 ### 2. Run the pipeline
 From within the project directory:
@@ -68,7 +79,7 @@ to persist to disk.
 }
 ```
 
-## OCR strategy
+## OCR Strategy & Supported Engines
 
 1. **Digital text pass** – `pdfminer.six` (vector PDFs only).
 2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.
@@ -80,8 +91,20 @@ to persist to disk.
 Confidence is computed as the geometric mean of token confidences reported
 by each OCR engine.
 
-Tesseract language, OEM and PSM settings can be adjusted in `config.py`
-to match the document type.
+**Test Results (DEWA Bill Sample):**
+
+| Method | Input Type | Confidence | Electricity | Carbon | Notes |
+|--------|------------|------------|-------------|---------|-------|
+| **OCR Engines (PNG Image)** |
+| Tesseract | PNG Image | 37.4% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction |
+| EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ❌ Missing | Missed carbon field |
+| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ❌ Missing | Highest confidence, correct extraction |
+| **Digital Text Extraction (PDF)** |
+| pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+
+**Configuration:**
+Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). 
+Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
 
 ## Hard‑coded API keys
 

@@ -14,6 +14,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
+# Python 3.13 compatibility shim for PaddleOCR
+try:
+    import imghdr
+except ImportError:
+    # Import our compatibility shim
+    import imghdr
+
 # Direct execution: python pipeline.py
 import config
 from config import *
@@ -171,9 +178,35 @@ def _paddleocr_ocr(image) -> OcrResult:
     if PaddleOCR is None:
         raise RuntimeError("paddleocr is not available")
     
-    # Initialize simple PaddleOCR (cached after first use)
+    # Initialize PaddleOCR with minimal resource settings for 8GB Mac
     if not hasattr(_paddleocr_ocr, "reader"):
-        _paddleocr_ocr.reader = PaddleOCR(lang='en')
+        import os
+        # Set Paddle to use CPU with minimal memory allocation
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Force CPU-only
+        os.environ['FLAGS_cpu_deterministic'] = 'true'
+        os.environ['FLAGS_max_inplace_grad_add'] = '8'
+        
+        try:
+            # Force garbage collection before initialization
+            import gc
+            gc.collect()
+            
+            _paddleocr_ocr.reader = PaddleOCR(
+                lang='en',
+                use_gpu=False,
+                use_angle_cls=False,
+                show_log=False,
+                enable_mkldnn=False,
+                cpu_threads=1,
+                det_limit_side_len=320,  # Minimal resolution for 8GB Mac
+                rec_batch_num=1,
+                max_batch_size=1,
+                drop_score=0.8  # Higher threshold to reduce processing
+            )
+        except Exception as e:
+            LOGGER.warning(f"Failed to initialize PaddleOCR: {e}")
+            # Fallback: PaddleOCR not available on this system (likely 8GB Mac memory limitation)
+            _paddleocr_ocr.reader = None
     
     # Convert PIL image to numpy array and ensure correct format
     if np is None:
@@ -185,11 +218,16 @@ def _paddleocr_ocr(image) -> OcrResult:
     
     img_array = np.array(image)
     
+    # Check if PaddleOCR is properly initialized
+    if _paddleocr_ocr.reader is None:
+        LOGGER.warning("PaddleOCR not available on this system (likely memory constraints)")
+        return OcrResult("", [], [])
+    
     # Use PaddleOCR
     try:
         results = _paddleocr_ocr.reader.ocr(img_array)
     except Exception as e:
-        LOGGER.warning(f"PaddleOCR failed: {e}")
+        LOGGER.warning(f"PaddleOCR runtime failed: {e}")
         return OcrResult("", [], [])
     
     tokens = []
@@ -200,13 +238,29 @@ def _paddleocr_ocr(image) -> OcrResult:
     if results and results[0]:
         for line in results[0]:
             if line and len(line) >= 2:
-                bbox, (text, conf) = line[0], line[1]
-                if text and text.strip():
-                    tokens.append(text)
-                    confidences.append(float(conf))
-                    text_parts.append(text)
+                bbox, text_info = line[0], line[1]
+                if isinstance(text_info, (list, tuple)) and len(text_info) >= 2:
+                    text, conf = text_info[0], text_info[1]
+                    if text and text.strip():
+                        tokens.append(text)
+                        confidences.append(float(conf))
+                        text_parts.append(text)
+                elif isinstance(text_info, str):
+                    # Fallback if only text is provided
+                    text = text_info
+                    if text and text.strip():
+                        tokens.append(text)
+                        confidences.append(0.9)  # Default confidence
+                        text_parts.append(text)
     
     joined = " ".join(text_parts)
+    
+    # Debug output for PaddleOCR
+    if text_parts:
+        LOGGER.debug(f"PaddleOCR extracted {len(text_parts)} text parts")
+    else:
+        LOGGER.warning("PaddleOCR extracted no text from image")
+    
     return OcrResult(text=joined, tokens=tokens, confidences=confidences)
 
 def pdf_to_images(pdf_path: Path, dpi: int) -> List:
@@ -333,7 +387,12 @@ def run_ocr(file_path: Path) -> OcrResult:
 # -----------------------------------------------------------------------------
 # Field extraction
 # -----------------------------------------------------------------------------
-ENERGY_RE = re.compile(r"(\d[\d\s,]{0,10})\s*k\s*W\s*h", re.I)
+# Primary energy regex - look for consumption context and reasonable kWh values
+ENERGY_RE = re.compile(r"(?:consumption|consumed|usage|total|reading).*?(\d{1,4}(?:[,\s]\d{3})*)\s*k\s*W\s*h", re.I | re.DOTALL)
+# Fallback 1: DEWA bill format - number followed by "Electricity" (for cases like "299  Electricity")
+ENERGY_DEWA_RE = re.compile(r"\b(\d{2,4})\s+Electricity", re.I)
+# Fallback 2: standalone kWh values in reasonable range
+ENERGY_FALLBACK_RE = re.compile(r"\b(\d{1,4})\s*k\s*W\s*h", re.I)
 # Improved carbon regex to handle OCR errors like "coze", "C0Ze" instead of "CO2e" 
 CARBON_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)e|co(?:2|\u2082)e|coze|C0Ze)\s+(\d[\d\s,]{0,10})", re.I)
 # Alternative carbon patterns - look for carbon footprint value (typically 2-4 digits)
@@ -351,9 +410,20 @@ def _normalise_number(num_txt: str) -> int:
 def extract_fields(text: str) -> Dict[str, int]:
     """Extracts electricity and carbon values from OCR text."""
     out: Dict[str, int] = {}
-    m = ENERGY_RE.search(text)
+    # Try patterns in order of specificity
+    m = ENERGY_RE.search(text) 
+    if not m:
+        m = ENERGY_DEWA_RE.search(text)  # Try DEWA bill format
+    if not m:
+        m = ENERGY_FALLBACK_RE.search(text)  # Final fallback
+        
     if m:
-        out["electricity_kwh"] = _normalise_number(m.group(1))
+        electricity_value = _normalise_number(m.group(1))
+        # Sanity check - reject obviously wrong values (typical usage should be 100-5000 kWh)
+        if electricity_value > 10000:
+            LOGGER.warning("Rejected unlikely electricity value: %d kWh", electricity_value)
+        else:
+            out["electricity_kwh"] = electricity_value
 
     # Try carbon patterns in order of specificity
     patterns = [
