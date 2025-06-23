@@ -3,13 +3,17 @@
 
 
 # --- OCR back‑end selection --------------------------------------------------
-# Options: "tesseract", "gcv", "azure"
-OCR_BACKEND       = "tesseract"
+# Options: "tesseract", "easyocr", "paddleocr"
+OCR_BACKEND       = "paddleocr"
 
-# --- Confidence thresholds ---------------------------------------------------
-TAU_FIELD_ACCEPT  = 0.95  # auto‑accept threshold
-TAU_ENHANCER_PASS = 0.9  # after enhancer / alt engine
-TAU_LLM_PASS      = 0.85  # LLM fallback
+# --- Confidence thresholds (optimized for accuracy) -------------------------
+TAU_FIELD_ACCEPT  = 0.80  # auto‑accept threshold (lowered for EasyOCR compatibility)
+TAU_ENHANCER_PASS = 0.75  # after enhancer / alt engine
+TAU_LLM_PASS      = 0.70  # LLM fallback
+
+# --- EasyOCR specific settings -----------------------------------------------
+EASYOCR_GPU       = False  # Set to True if GPU available for better performance
+EASYOCR_LANG      = ['en'] # Language support for EasyOCR
 
 # --- Misc --------------------------------------------------------------------
 MAX_PAGES         = 20    # safety cap to avoid 100‑page uploads

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Test/sample files
+*.png
+*.pdf
+*.jpg
+*.jpeg
+output_*.json
+imghdr.py
+
+# Virtual environments
+venv/
+venv_new/
+env/
+.env
