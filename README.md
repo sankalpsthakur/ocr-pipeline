@@ -112,8 +112,11 @@ by each OCR engine.
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 
 **Configuration:**
-Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). 
+Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
 Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
+EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
+`PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to
+override both engines with a single value.
 
 ## Hard‑coded API keys
 
