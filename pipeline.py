@@ -38,6 +38,7 @@ except ImportError:
 
 # Direct execution: python pipeline.py
 import config
+from config import PADDLEOCR_LANG, OCR_LANG
 from config import *
 
 try:
@@ -207,7 +208,7 @@ def _paddleocr_ocr(image) -> OcrResult:
             gc.collect()
             
             _paddleocr_ocr.reader = PaddleOCR(
-                lang='en',
+                lang=OCR_LANG if OCR_LANG else PADDLEOCR_LANG,
                 use_gpu=False,
                 use_angle_cls=False,
                 show_log=False,
