@@ -99,7 +99,7 @@ $ pytest -q
 ## OCR Strategy & Supported Engines
 
 1. **Digital text pass** – `pdfminer.six` (vector PDFs only).
-2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.
+2. **Bitmap pass** – `pytesseract` or HuggingFace **TrOCR** (GPU) at 300 dpi via `pdf2image`.
 3. **Orientation check** – pages are auto‑rotated using Tesseract OSD.
 4. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
    **or** switch to an alternate engine (`OCR_BACKEND="easyocr"` or `"paddleocr"`).
@@ -122,7 +122,7 @@ by each OCR engine.
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 
 **Configuration:**
-Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
+Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). When a GPU is detected, the pipeline automatically switches the tesseract backend to the HuggingFace model.
 Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
 EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
 `PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to

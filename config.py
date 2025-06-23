@@ -12,6 +12,9 @@ MAX_PAGES = 3
 # Primary OCR backend: "tesseract", "easyocr", or "paddleocr"
 OCR_BACKEND       = "tesseract"
 
+# HuggingFace model used when GPU is available
+HF_MODEL          = "microsoft/trocr-base-stage1"
+
 # Language settings for different OCR engines
 OCR_LANG          = None           # Override for all engines (e.g., "eng", "fra")
 TESSERACT_LANG    = "eng"          # Tesseract-specific language

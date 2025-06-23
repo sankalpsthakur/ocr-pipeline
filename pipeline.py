@@ -74,6 +74,13 @@ try:
     from paddleocr import PaddleOCR
 except Exception:  # pragma: no cover - optional dependency
     PaddleOCR = None
+try:
+    from engine import EngineInterface, HFEngine
+except Exception:  # pragma: no cover - optional dependency
+    EngineInterface = None
+    HFEngine = None
+
+hf_engine: HFEngine | None = None
 
 # Configuration imported from config.py
 
@@ -279,6 +286,33 @@ def _paddleocr_ocr(image) -> OcrResult:
     
     return OcrResult(text=joined, tokens=tokens, confidences=confidences)
 
+
+def _hf_available() -> bool:
+    if HFEngine is None:
+        return False
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except Exception:
+        return False
+
+
+def _hf_ocr(image) -> OcrResult:
+    global hf_engine
+    if HFEngine is None:
+        raise RuntimeError("HFEngine is not available")
+    if hf_engine is None:
+        try:
+            hf_engine = HFEngine()
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError(f"Failed to load HF engine: {exc}")
+
+    result = hf_engine.predict([image])[0]
+    text = result.get("text", "")
+    tokens = text.split()
+    confidences = [1.0] * len(tokens)
+    return OcrResult(text=text, tokens=tokens, confidences=confidences)
+
 def pdf_to_images(pdf_path: Path, dpi: int) -> List:
     """Convert PDF pages to images with a page cap for efficiency."""
     if convert_from_path is None:
@@ -296,9 +330,29 @@ def load_image(image_path: Path):
         raise RuntimeError("PIL is not available")
     return Image.open(str(image_path))
 
+
+def _selected_backend() -> str:
+    if OCR_BACKEND == "tesseract" and _hf_available():
+        return "hf"
+    return OCR_BACKEND
+
 def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) -> OcrResult:
     """Run OCR using the configured backend engine."""
-    if OCR_BACKEND == "tesseract":
+    backend = _selected_backend()
+    if backend == "hf":
+        if is_image:
+            img = load_image(file_path)
+            return _hf_ocr(img)
+        else:
+            images = pdf_to_images(file_path, dpi=dpi)
+            joined, tok, conf = "", [], []
+            for img in images:
+                res = _hf_ocr(img)
+                joined += res.text + "\n"
+                tok.extend(res.tokens)
+                conf.extend(res.confidences)
+            return OcrResult(joined, tok, conf)
+    if backend == "tesseract":
         if is_image:
             # Process single image file
             img = load_image(file_path)
@@ -313,7 +367,7 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
             return OcrResult(joined, tok, conf)
-    elif OCR_BACKEND == "easyocr":
+    elif backend == "easyocr":
         if is_image:
             # Process single image file
             img = load_image(file_path)
@@ -328,7 +382,7 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
             return OcrResult(joined, tok, conf)
-    elif OCR_BACKEND == "paddleocr":
+    elif backend == "paddleocr":
         if is_image:
             # Process single image file
             img = load_image(file_path)
@@ -344,7 +398,7 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
                 conf.extend(res.confidences)
             return OcrResult(joined, tok, conf)
     else:
-        raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
+        raise ValueError(f"Unsupported OCR backend: {backend}")
 
 
 def gpt4o_fallback(image_path: Path) -> Dict[str, int]:
