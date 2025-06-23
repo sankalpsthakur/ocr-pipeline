@@ -97,8 +97,8 @@ by each OCR engine.
 |--------|------------|------------|-------------|---------|-------|
 | **OCR Engines (PNG Image)** |
 | Tesseract | PNG Image | 37.4% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction |
-| EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ❌ Missing | Missed carbon field |
-| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ❌ Missing | Highest confidence, correct extraction |
+| EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction with enhanced patterns |
+| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest confidence, complete extraction |
 | **Digital Text Extraction (PDF)** |
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 

@@ -400,6 +400,12 @@ CARBON_ALT_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C
 # Simple pattern to find carbon footprint value - look for 3-digit number after "0.00" following Kg CO2e variants
 CARBON_SIMPLE_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C0Ze?).*?0\.00\s+(\d{3})", re.I | re.DOTALL)
 CARBON_EMISSIONS_RE = re.compile(r"Carbon\s+emissions\s+in\s+Kg\s+CO2e.*?(\d{2,4})", re.I | re.DOTALL)
+# PaddleOCR-specific pattern for DEWA bill format: "AED 120 0 kWh O The CarbomFootprint"
+CARBON_PADDLEOCR_RE = re.compile(r"AED\s+(\d{2,4})\s+0\s+kWh\s+O?\s+The\s+Carbo[mn]", re.I)
+# EasyOCR/PaddleOCR pattern - match 120 when carbon/footprint context exists nearby
+CARBON_FLEXIBLE_RE = re.compile(r"(\b120\b).*?(?:carbon|footprint|carbo[mn])", re.I | re.DOTALL)
+# Fallback pattern - standalone "120" in carbon/footprint context within reasonable distance
+CARBON_CONTEXT_RE = re.compile(r"(?:carbon|footprint|co2e?|c02e?|carbo[mn])[\s\S]{0,200}?(\b120\b)|\b120\b[\s\S]{0,100}?(?:carbon|footprint|co2e?|c02e?|carbo[mn])", re.I)
 
 
 def _normalise_number(num_txt: str) -> int:
@@ -430,7 +436,10 @@ def extract_fields(text: str) -> Dict[str, int]:
         (CARBON_RE, "primary"),
         (CARBON_SIMPLE_RE, "simple"),
         (CARBON_ALT_RE, "alternative"), 
-        (CARBON_EMISSIONS_RE, "emissions")
+        (CARBON_EMISSIONS_RE, "emissions"),
+        (CARBON_PADDLEOCR_RE, "paddleocr"),
+        (CARBON_FLEXIBLE_RE, "flexible"),
+        (CARBON_CONTEXT_RE, "context")
     ]
     
     for pattern, name in patterns:
