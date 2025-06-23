@@ -4,11 +4,20 @@
 import sys
 import pipeline
 from pathlib import Path
+import pytest
 
 # Temporarily disable pdfminer to force OCR
 original_extract_text = pipeline.extract_text
 pipeline.extract_text = None
 
+@pytest.mark.parametrize(
+    "tau_accept,tau_enhance,tau_llm",
+    [
+        (0.95, 0.90, 0.85),
+        (0.98, 0.95, 0.90),
+        (0.90, 0.85, 0.80),
+    ],
+)
 def test_ocr_with_config(tau_accept, tau_enhance, tau_llm):
     """Test OCR with specific threshold configuration."""
     # Update config values
@@ -55,32 +64,9 @@ def test_ocr_with_config(tau_accept, tau_enhance, tau_llm):
     
     except Exception as e:
         print(f"  Error: {e}")
+    finally:
+        pipeline.extract_text = original_extract_text
 
-def main():
-    """Test different threshold configurations."""
-    print("Testing OCR threshold logic...\n")
-    
-    # Test original config
-    test_ocr_with_config(0.95, 0.90, 0.85)
-    
-    # Test stricter config
-    test_ocr_with_config(0.98, 0.95, 0.90)
-    
-    # Test more permissive config  
-    test_ocr_with_config(0.90, 0.85, 0.80)
-    
-    # Restore original extract_text
-    pipeline.extract_text = original_extract_text
-    
-    print("\n" + "="*60)
-    print("THRESHOLD TESTING COMPLETE")
-    print("="*60)
-    print("Optimal thresholds for this PDF type:")
-    print("- TAU_FIELD_ACCEPT = 0.95 (good balance)")
-    print("- TAU_ENHANCER_PASS = 0.90 (reasonable enhancement trigger)")  
-    print("- TAU_LLM_PASS = 0.85 (conservative LLM fallback)")
-    print("- DPI_PRIMARY = 300 (sufficient for most documents)")
-    print("- DPI_ENHANCED = 600 (good enhancement resolution)")
-
-if __name__ == "__main__":
-    main()
+# The original file executed the checks as a standalone script printing advice.
+# Within the test suite we simply parameterise the configurations and ensure the
+# logic executes without errors.

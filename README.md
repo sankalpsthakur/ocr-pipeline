@@ -79,13 +79,22 @@ to persist to disk.
 }
 ```
 
+### 4. Run tests
+
+Run the full unit test suite with **pytest**. A successful run executes 52 tests:
+
+```bash
+$ pytest -q
+52 passed
+```
+
 ## OCR Strategy & Supported Engines
 
 1. **Digital text pass** – `pdfminer.six` (vector PDFs only).
 2. **Bitmap pass** – `pytesseract` at 300 dpi via `pdf2image`.
 3. **Orientation check** – pages are auto‑rotated using Tesseract OSD.
 4. **Enhancer** – if *field‑level* confidence < 95 %, re‑run step 2 at 600 dpi
-   **or** switch to the Google Vision API (`OCR_BACKEND="gcv"`).
+   **or** switch to an alternate engine (`OCR_BACKEND="easyocr"` or `"paddleocr"`).
 5. **LLM fallback** – optional: set `USE_LLM_FALLBACK=True` in `config.py`.
 
 Confidence is computed as the geometric mean of token confidences reported
@@ -108,10 +117,8 @@ Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match
 
 ## Hard‑coded API keys
 
-`config.py` contains example keys for:
+`config.py` contains an example key for OpenAI integration:
 
-* **Google Vision V1** – `GCV_API_KEY`
-* **Azure Form Recognizer** – `AZURE_FR_KEY`
 * **OpenAI GPT‑4o** – `OPENAI_API_KEY`
 
 > **Important**: Keys are fake placeholders. Replace them with real credentials

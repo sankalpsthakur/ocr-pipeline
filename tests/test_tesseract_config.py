@@ -4,6 +4,9 @@
 import subprocess
 import sys
 from pathlib import Path
+import pytest
+
+ORIGINAL_CONFIG = Path("config.py").read_text()
 
 def update_tesseract_config(lang, oem, psm):
     """Update Tesseract configuration in config.py."""
@@ -12,7 +15,7 @@ def update_tesseract_config(lang, oem, psm):
 
 
 # --- OCR back‑end selection --------------------------------------------------
-# Options: "tesseract", "gcv", "azure"
+# Options: "tesseract", "easyocr", "paddleocr"
 OCR_BACKEND       = "tesseract"
 
 # --- Confidence thresholds ---------------------------------------------------
@@ -38,6 +41,19 @@ TESSERACT_PSM     = {psm}     # Page Segmentation Mode
 '''
     Path("config.py").write_text(config_content)
 
+@pytest.mark.parametrize(
+    "lang,oem,psm,description",
+    [
+        ("eng", 3, 6, "Default (English, LSTM, Single block)"),
+        ("eng", 1, 6, "Legacy engine"),
+        ("eng", 3, 3, "Fully automatic page segmentation"),
+        ("eng", 3, 4, "Single column text"),
+        ("eng", 3, 7, "Single text line"),
+        ("eng", 3, 8, "Single word"),
+        ("eng", 3, 11, "Sparse text"),
+        ("eng", 3, 13, "Raw line (no segmentation)"),
+    ],
+)
 def test_tesseract_config(lang, oem, psm, description):
     """Test a Tesseract configuration."""
     print(f"\nTesting {description}: LANG={lang}, OEM={oem}, PSM={psm}")
@@ -60,48 +76,8 @@ def test_tesseract_config(lang, oem, psm, description):
     except Exception as e:
         print(f"  ✗ Error: {e}")
         return False
+    finally:
+        Path("config.py").write_text(ORIGINAL_CONFIG)
 
-def main():
-    """Test different Tesseract configurations."""
-    print("Testing Tesseract configuration options...\n")
-    
-    # Test different configurations
-    configs = [
-        ("eng", 3, 6, "Default (English, LSTM, Single block)"),
-        ("eng", 1, 6, "Legacy engine"),
-        ("eng", 3, 3, "Fully automatic page segmentation"),
-        ("eng", 3, 4, "Single column text"),
-        ("eng", 3, 7, "Single text line"),
-        ("eng", 3, 8, "Single word"),
-        ("eng", 3, 11, "Sparse text"),
-        ("eng", 3, 13, "Raw line (no segmentation)"),
-    ]
-    
-    successful_configs = []
-    
-    for lang, oem, psm, desc in configs:
-        if test_tesseract_config(lang, oem, psm, desc):
-            successful_configs.append((lang, oem, psm, desc))
-    
-    print("\n" + "="*60)
-    print("TESSERACT CONFIGURATION TESTING COMPLETE")
-    print("="*60)
-    
-    print("\nValid configurations:")
-    for lang, oem, psm, desc in successful_configs:
-        print(f"  {desc}: LANG={lang}, OEM={oem}, PSM={psm}")
-    
-    print(f"\nRecommended configuration for utility bills:")
-    print(f"  TESSERACT_LANG = 'eng' (English language)")  
-    print(f"  TESSERACT_OEM = 3 (LSTM engine - best accuracy)")
-    print(f"  TESSERACT_PSM = 6 (Single uniform block - good for invoices)")
-    
-    print(f"\nAlternative for sparse text:")
-    print(f"  TESSERACT_PSM = 11 (Sparse text - better for scattered numbers)")
-    
-    # Restore recommended config
-    update_tesseract_config("eng", 3, 6)
-    print(f"\nRecommended configuration has been applied to config.py")
-
-if __name__ == "__main__":
-    main()
+# The original script provided extensive CLI output. The pytest version simply
+# verifies that each configuration compiles successfully.

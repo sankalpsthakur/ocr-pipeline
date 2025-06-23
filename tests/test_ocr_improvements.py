@@ -72,7 +72,7 @@ class TestOCREngineIntegration:
     def test_configuration_loading(self):
         """Test that OCR backend configuration is valid."""
         from config import OCR_BACKEND
-        assert OCR_BACKEND in ["tesseract", "easyocr", "paddleocr", "gcv", "azure"]
+        assert OCR_BACKEND in ["tesseract", "easyocr", "paddleocr"]
     
     @patch('pipeline.pytesseract')
     @patch('pipeline.preprocess_image')
