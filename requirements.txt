@@ -10,3 +10,8 @@ regex==2025.6.18
 numpy==1.26.4
 pydantic==2.7.0
 opencv-python==4.10.0.82
+easyocr==1.7.0
+torch>=1.6.0
+torchvision>=0.7.0
+paddlepaddle==2.6.1
+paddleocr==2.8.1

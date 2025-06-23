@@ -3,8 +3,8 @@
 
 
 # --- OCR back‑end selection --------------------------------------------------
-# Options: "tesseract", "gcv", "azure"
-OCR_BACKEND       = "tesseract"
+# Options: "tesseract", "easyocr", "paddleocr", "gcv", "azure"
+OCR_BACKEND       = "easyocr"
 
 # --- Confidence thresholds ---------------------------------------------------
 TAU_FIELD_ACCEPT  = 0.95  # auto‑accept threshold

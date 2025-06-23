@@ -43,6 +43,10 @@ try:
     from pdfminer.high_level import extract_text
 except Exception:  # pragma: no cover - optional dependency
     extract_text = None
+try:
+    import easyocr
+except Exception:  # pragma: no cover - optional dependency
+    easyocr = None
 
 # Configuration imported from config.py
 
@@ -122,6 +126,35 @@ def _tesseract_ocr(image) -> OcrResult:
     joined = " ".join(filtered_tokens)
     return OcrResult(text=joined, tokens=filtered_tokens, confidences=filtered_confs)
 
+def _easyocr_ocr(image) -> OcrResult:
+    if easyocr is None:
+        raise RuntimeError("easyocr is not available")
+    
+    # Initialize EasyOCR reader (cached after first use)
+    if not hasattr(_easyocr_ocr, "reader"):
+        _easyocr_ocr.reader = easyocr.Reader(['en'], gpu=False)
+    
+    # Convert PIL image to numpy array
+    if np is None:
+        raise RuntimeError("numpy is required for EasyOCR")
+    img_array = np.array(image)
+    
+    # Run EasyOCR
+    results = _easyocr_ocr.reader.readtext(img_array, detail=1)
+    
+    tokens = []
+    confidences = []
+    text_parts = []
+    
+    for (bbox, text, conf) in results:
+        if text.strip():
+            tokens.append(text)
+            confidences.append(float(conf))
+            text_parts.append(text)
+    
+    joined = " ".join(text_parts)
+    return OcrResult(text=joined, tokens=tokens, confidences=confidences)
+
 def pdf_to_images(pdf_path: Path, dpi: int) -> List:
     """Convert PDF pages to images with a page cap for efficiency."""
     if convert_from_path is None:
@@ -152,6 +185,21 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
             joined, tok, conf = "", [], []
             for img in images:
                 res = _tesseract_ocr(img)
+                joined += res.text + "\n"
+                tok.extend(res.tokens)
+                conf.extend(res.confidences)
+            return OcrResult(joined, tok, conf)
+    elif OCR_BACKEND == "easyocr":
+        if is_image:
+            # Process single image file
+            img = load_image(file_path)
+            return _easyocr_ocr(img)
+        else:
+            # Process PDF
+            images = pdf_to_images(file_path, dpi=dpi)
+            joined, tok, conf = "", [], []
+            for img in images:
+                res = _easyocr_ocr(img)
                 joined += res.text + "\n"
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
@@ -217,7 +265,13 @@ def run_ocr(file_path: Path) -> OcrResult:
 # Field extraction
 # -----------------------------------------------------------------------------
 ENERGY_RE = re.compile(r"(\d[\d\s,]{0,10})\s*k\s*W\s*h", re.I)
-CARBON_RE = re.compile(r"Kg\s*CO(?:2|\u2082)e\s*(\d[\d\s,]{0,10})", re.I)
+# Improved carbon regex to handle OCR errors like "coze", "C0Ze" instead of "CO2e" 
+CARBON_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)e|co(?:2|\u2082)e|coze|C0Ze)\s+(\d[\d\s,]{0,10})", re.I)
+# Alternative carbon patterns - look for carbon footprint value (typically 2-4 digits)
+CARBON_ALT_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C0Ze?).*?(\d{2,4})(?=\s|$)", re.I | re.DOTALL)
+# Simple pattern to find carbon footprint value - look for 3-digit number after "0.00" following Kg CO2e variants
+CARBON_SIMPLE_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C0Ze?).*?0\.00\s+(\d{3})", re.I | re.DOTALL)
+CARBON_EMISSIONS_RE = re.compile(r"Carbon\s+emissions\s+in\s+Kg\s+CO2e.*?(\d{2,4})", re.I | re.DOTALL)
 
 
 def _normalise_number(num_txt: str) -> int:
@@ -232,9 +286,22 @@ def extract_fields(text: str) -> Dict[str, int]:
     if m:
         out["electricity_kwh"] = _normalise_number(m.group(1))
 
-    m = CARBON_RE.search(text)
-    if m:
-        out["carbon_kgco2e"] = _normalise_number(m.group(1))
+    # Try carbon patterns in order of specificity
+    patterns = [
+        (CARBON_RE, "primary"),
+        (CARBON_SIMPLE_RE, "simple"),
+        (CARBON_ALT_RE, "alternative"), 
+        (CARBON_EMISSIONS_RE, "emissions")
+    ]
+    
+    for pattern, name in patterns:
+        m = pattern.search(text)
+        if m:
+            carbon_value = _normalise_number(m.group(1))
+            # Skip obviously wrong values like 0, 000, etc.
+            if carbon_value > 10:  # Carbon footprint should be > 10 kg for typical usage
+                out["carbon_kgco2e"] = carbon_value
+                break
 
     return out
 # -----------------------------------------------------------------------------
