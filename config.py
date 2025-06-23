@@ -28,5 +28,15 @@ TESSERACT_LANG    = "eng"
 TESSERACT_OEM     = 3     # OCR Engine Mode
 TESSERACT_PSM     = 6     # Page Segmentation Mode
 
+# --- OpenAI -------------------------------------------------------------------
+# Vision model used for LLM fallback
+OPENAI_MODEL      = "gpt-4o"
+# Hard-coded API key for GPT-4o fallback
+OPENAI_API_KEY    = (
+    "sk-proj-QcnaSTsncplx5prGAIkgVxXdFvPq53sGW4hLuRUAKAWTsBdiIhJVRIM7vpmCaCEpn41"
+    "GdMOBjPT3BlbkFJ8Dc8BYxMxVsZcQ_doHYd4NslUPZKAaySSbErIH8Zt2-_ekhiEEBc56BPGKCe_"
+    "FZuBk_3IKaCAA"
+)
+
 
 

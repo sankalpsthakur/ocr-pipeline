@@ -10,9 +10,24 @@ import math
 import re
 import sys
 import hashlib
+import base64
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
+import types
+
+try:
+    import openai  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    class _DummyCompletion:
+        def create(self, *_, **__):
+            raise RuntimeError("openai package is required")
+
+    class _DummyChat:
+        completions = _DummyCompletion()
+
+    openai = types.SimpleNamespace(chat=_DummyChat())
 
 # Python 3.13 compatibility shim for PaddleOCR
 try:
@@ -330,6 +345,58 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False) ->
     else:
         raise ValueError(f"Unsupported OCR backend: {OCR_BACKEND}")
 
+
+def gpt4o_fallback(image_path: Path) -> Dict[str, int]:
+    """Call OpenAI GPT-4o vision model to extract fields directly from an image."""
+    api_key = config.OPENAI_API_KEY
+    if not api_key:
+        LOGGER.warning("OpenAI API key not configured; skipping LLM fallback")
+        return {}
+
+    openai.api_key = api_key
+
+    try:
+        img_bytes = image_path.read_bytes()
+        b64 = base64.b64encode(img_bytes).decode("utf-8")
+        fmt = image_path.suffix.lstrip(".") or "png"
+        image_url = f"data:image/{fmt};base64,{b64}"
+
+        resp = openai.chat.completions.create(
+            model=config.OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract the electricity consumption in kWh and "
+                                "carbon footprint in kgCO2e from this utility bill "
+                                "image. Reply with JSON keys 'electricity_kwh' "
+                                "and 'carbon_kgco2e'."
+                            ),
+                        },
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=50,
+            temperature=0,
+        )
+
+        content = resp.choices[0].message.content
+        data = json.loads(content)
+        out = {}
+        if "electricity_kwh" in data and data["electricity_kwh"] is not None:
+            out["electricity_kwh"] = int(data["electricity_kwh"])
+        if "carbon_kgco2e" in data and data["carbon_kgco2e"] is not None:
+            out["carbon_kgco2e"] = int(data["carbon_kgco2e"])
+        return out
+    except Exception as exc:  # pragma: no cover - network errors
+        LOGGER.warning("GPT-4o fallback failed: %s", exc)
+        return {}
+
 def run_ocr(file_path: Path) -> OcrResult:
     """Cascaded OCR: digital pass ➜ bitmap pass ➜ enhancer."""
     # Check if file is an image
@@ -374,7 +441,23 @@ def run_ocr(file_path: Path) -> OcrResult:
         LOGGER.warning("Confidence still low (%.2f) – returning best effort", enhanced.field_confidence)
         return enhanced
     else:
-        # For images, just return the result as enhancement is not applicable
+        # For images, invoke LLM fallback if confidence is low
+        if result.field_confidence < TAU_LLM_PASS:
+            LOGGER.warning(
+                "OCR confidence (%.2f) below LLM threshold (%.2f)",
+                result.field_confidence,
+                TAU_LLM_PASS,
+            )
+            LOGGER.info("Running GPT-4o vision fallback…")
+            llm_fields = gpt4o_fallback(file_path)
+            text_parts = []
+            if "electricity_kwh" in llm_fields:
+                text_parts.append(f"Electricity {llm_fields['electricity_kwh']} kWh")
+            if "carbon_kgco2e" in llm_fields:
+                text_parts.append(f"Carbon {llm_fields['carbon_kgco2e']} kg")
+            llm_text = " ".join(text_parts)
+            return OcrResult(text=llm_text, tokens=text_parts, confidences=[1.0] * len(text_parts))
+
         LOGGER.info("Image processing complete (%.2f)", result.field_confidence)
         return result
 
