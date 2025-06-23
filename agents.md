@@ -12,7 +12,7 @@ These files are essential for testing the OCR pipeline across different formats 
 
 ### Test Environment
 - Python 3.13.2
-- Virtual environment: `venv_new/`
+- Virtual environment: `venv/`
 - Dependencies installed from `requirements.txt`
 
 ### OCR Pipeline Structure
@@ -35,7 +35,7 @@ The pipeline supports multiple OCR backends:
 
 1. **Environment Setup**:
    ```bash
-   source venv_new/bin/activate
+   source venv/bin/activate
    ```
 
 2. **Test with Images**:
