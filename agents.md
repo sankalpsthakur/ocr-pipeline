@@ -50,7 +50,7 @@ The pipeline supports multiple OCR backends:
 
 4. **Run Test Suite**:
    ```bash
-   pytest -q  # Should show 52 passed tests
+   pytest -q  # Should show 54 passed tests
    ```
 
 ### Test Results with ActualBill Files
@@ -63,8 +63,8 @@ The pipeline supports multiple OCR backends:
 - **Processing time**: 0.60s
 
 #### ActualBill.pdf (Digital text extraction)
-- **Status**: ✅ PASSED  
-- **Electricity**: 9 kWh (Note: Different value - likely different bill)
+- **Status**: ✅ PASSED
+- **Electricity**: 299 kWh
 - **Carbon**: 120 kgCO2e
 - **Confidence**: 100% (Digital text)
 - **Processing time**: Fast (digital extraction)
