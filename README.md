@@ -25,7 +25,14 @@ ocr_pipeline/
 
 ## Installation & Quick‑start
 
-### 1. Set up virtual environment
+### System packages
+Install `tesseract-ocr` and `poppler-utils` via `apt` before installing Python dependencies:
+
+```bash
+$ sudo apt-get update && sudo apt-get install -y tesseract-ocr poppler-utils
+```
+
+### 1. Set up the `venv` virtual environment
 
 **Requirements:** Python 3.8+ (tested with Python 3.13)
 
@@ -42,6 +49,7 @@ $ pip install -r requirements.txt
 - **PaddleOCR optimized for 8GB Macs**: Uses minimal resolution (320px) and single-threaded processing
 - If you encounter issues with Pillow on Python 3.13, the installation process will automatically use a compatible version (Pillow 11.2.1+)
 - Total installation size: ~500MB including all ML models
+- The pipeline relies on `pdf2image` and `pytesseract` (installed via `pip`)
 
 ### 2. Run the pipeline
 From within the project directory:
@@ -81,11 +89,11 @@ to persist to disk.
 
 ### 4. Run tests
 
-Run the full unit test suite with **pytest**. A successful run executes 52 tests:
+Run the full unit test suite with **pytest**. A successful run executes 54 tests:
 
 ```bash
 $ pytest -q
-52 passed
+54 passed
 ```
 
 ## OCR Strategy & Supported Engines
@@ -105,21 +113,30 @@ by each OCR engine.
 | Method | Input Type | Confidence | Electricity | Carbon | Notes |
 |--------|------------|------------|-------------|---------|-------|
 | **OCR Engines (PNG Image)** |
-| Tesseract | PNG Image | 37.4% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction |
+| Tesseract | PNG Image | 60% | ✅ 299 kWh | ✅ 120 kgCO2e | Low confidence triggers LLM fallback |
 | EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction with enhanced patterns |
 | PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest confidence, complete extraction |
+| **LLM Fallback** |
+| GPT-4o Vision | PNG Image | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Vision model fallback when OCR confidence < 70% |
 | **Digital Text Extraction (PDF)** |
 | pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 
 **Configuration:**
-Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr"). 
+Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
 Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
+EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
+`PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to
+override both engines with a single value.
 
 ## Hard‑coded API keys
 
 `config.py` contains an example key for OpenAI integration:
 
 * **OpenAI GPT‑4o** – `OPENAI_API_KEY`
+
+When processing image files, the pipeline will automatically call GPT‑4o as a
+fallback if OCR confidence is low. The key is defined directly in `config.py` as
+`OPENAI_API_KEY`.
 
 > **Important**: Keys are fake placeholders. Replace them with real credentials
 > before first run. Hard‑coding is **not** recommended in production.
