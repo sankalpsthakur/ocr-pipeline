@@ -21,3 +21,4 @@ venv/
 venv_new/
 env/
 .env
+.DS_Store
