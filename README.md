@@ -114,10 +114,12 @@ by each OCR engine.
 | EasyOCR | PNG Image | 74.1% | ✅ 299 kWh | ✅ 120 kgCO2e | Good accuracy with enhanced patterns |
 | PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest Confidence Correct Extraction |
 | **VLM/LLM Engines (PNG Image)** |
-| Mistral OCR | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Specialized OCR model, high accuracy |
-| Gemma VLM | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Vision-language model, excellent extraction |
+| Mistral OCR | PNG Image | 97.0% | ✅ 299 kWh | ✅ 120 kgCO2e | Specialized OCR model, high accuracy |
+| Gemma VLM | PNG Image | 96.0% | ✅ 299 kWh | ✅ 120 kgCO2e | Vision-language model, excellent extraction |
+| **LLM Fallback (PNG Image)** |
+| Gemini Flash | PNG Image | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Final fallback for field-specific JSON extraction |
 | **Digital Text Extraction (PDF)** |
-| pdfminer.six | PDF | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+| pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
 
 **Confidence Metrics:**
 - **Traditional OCR**: Geometric mean of token-level confidence scores from engines
