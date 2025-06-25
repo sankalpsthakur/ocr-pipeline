@@ -128,6 +128,39 @@ EasyOCR uses `EASYOCR_LANG` (e.g. `['en', 'fr']`), while PaddleOCR uses
 `PADDLEOCR_LANG` (e.g. `'en'` or `'ch'`). Set `OCR_LANG` to a language code to
 override both engines with a single value.
 
+## Hierarchical OCR Pipeline Architecture
+
+**Cascade order inside run_ocr():**
+
+```
+┌──── PDF? ──► try pdfminer (digital text pass)
+│              │
+│              └── success → done
+│
+└─ otherwise → hierarchical OCR engines:
+
+1.  Tesseract        # fast, local baseline
+2.  EasyOCR          # open-source CNN/LSTM reader  
+3.  PaddleOCR        # high-accuracy CRNN/CLS pipeline
+4.  Mistral OCR      # cloud, vision-LLM specialised
+5.  Gemma VLM OCR    # Gemini 2.0 Flash vision model
+───────────────────────────────────────────────
+6.  Gemini Flash     # final LLM fallback (field-specific JSON)
+```
+
+### How the hierarchy works
+
+| Step | What the code does | When it moves on |
+|------|-------------------|------------------|
+| **Pre-flight** | • If file is PDF it first calls `extract_text()` (pdfminer). | No text or empty string. |
+| **Engine loop** | Iterates through the list `["tesseract", "easyocr", "paddleocr", "mistral", "gemma_vlm"]`. Each engine is run via `_run_ocr_engine()`. | If `field_confidence < TAU_FIELD_ACCEPT` (strict) and `< TAU_ENHANCER_PASS` after any DPI boost, the loop continues. |
+| **DPI enhancement** | For PDF pages whose first pass is mediocre (`>= TAU_ENHANCER_PASS` but `< TAU_FIELD_ACCEPT`), the same engine is rerun at `DPI_ENHANCED` (typically 600 dpi vs. 300 dpi). | Enhanced confidence still too low. |
+| **Accept / return** | As soon as an engine's geometric-mean confidence `field_confidence ≥ TAU_FIELD_ACCEPT`, that result is returned. | n/a |
+| **LLM fallback** | If every engine is rejected, `gemini_flash_fallback()` asks Gemini 2.0 Flash to pull the electricity kWh and carbon kgCO₂e directly from the raw image/PDF. | Only if even this fails does the pipeline return an empty payload. |
+
+### Confidence math
+`OcrResult.field_confidence = geometric mean of token confidences` (each bounded below by 1 × 10⁻³).
+
 ## Hard‑coded API keys
 
 `config.py` contains an example key for OpenAI integration:
