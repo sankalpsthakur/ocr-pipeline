@@ -1,7 +1,5 @@
 # OCR Bill Parsing Pipeline
 
-**Version:** 1.2.0  
-**Last updated:** 2025-06-22 14:00:00 UTC
 
 This reference implementation ingests a utility bill (PDF/PNG/JPG/JPEG), performs high‑accuracy text
 extraction with a *cascaded OCR* strategy, and returns a canonical JSON object containing:
@@ -54,9 +52,8 @@ $ pip install -r requirements.txt
 ### 2. Run the pipeline
 From within the project directory:
 ```bash
-$ python pipeline.py utility_bill.pdf
-$ python pipeline.py Actualbill.png
-$ python pipeline.py bill_image.jpg
+$ python pipeline.py ActualBill.png
+$ python pipeline.py ActualBill.pdf
 ```
 
 The script prints the JSON payload to `stdout`. Add `--save output.json`
@@ -78,7 +75,7 @@ to persist to disk.
     }
   },
   "source_document": {
-    "file_name": "bill.pdf",
+    "file_name": "ActualBill.pdf",
     "sha256": "53a1755f..."
   },
   "meta": {
@@ -113,13 +110,19 @@ by each OCR engine.
 | Method | Input Type | Confidence | Electricity | Carbon | Notes |
 |--------|------------|------------|-------------|---------|-------|
 | **OCR Engines (PNG Image)** |
-| Tesseract | PNG Image | 60% | ✅ 299 kWh | ✅ 120 kgCO2e | Low confidence triggers LLM fallback |
-| EasyOCR | PNG Image | 75.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Complete extraction with enhanced patterns |
-| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest confidence, complete extraction |
-| **LLM Fallback** |
-| GPT-4o Vision | PNG Image | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Vision model fallback when OCR confidence < 70% |
+| Tesseract | PNG Image | 60.0% | ✅ 299 kWh | ✅ 120 kgCO2e | Low confidence, triggers next engine |
+| EasyOCR | PNG Image | 74.1% | ✅ 299 kWh | ✅ 120 kgCO2e | Good accuracy with enhanced patterns |
+| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest Confidence Correct Extraction |
+| **VLM/LLM Engines (PNG Image)** |
+| Mistral OCR | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Specialized OCR model, high accuracy |
+| Gemma VLM | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Vision-language model, excellent extraction |
 | **Digital Text Extraction (PDF)** |
-| pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+| pdfminer.six | PDF | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+
+**Confidence Metrics:**
+- **Traditional OCR**: Geometric mean of token-level confidence scores from engines
+- **VLM/LLM**: Fixed high confidence (96-97%) based on model specialization
+- **Comparison**: Accuracy (correct extraction) + Confidence + Robustness across formats
 
 **Configuration:**
 Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
@@ -161,25 +164,8 @@ override both engines with a single value.
 ### Confidence math
 `OcrResult.field_confidence = geometric mean of token confidences` (each bounded below by 1 × 10⁻³).
 
-## Hard‑coded API keys
-
-`config.py` contains an example key for OpenAI integration:
-
-* **OpenAI GPT‑4o** – `OPENAI_API_KEY`
-
-When processing image files, the pipeline will automatically call GPT‑4o as a
-fallback if OCR confidence is low. The key is defined directly in `config.py` as
-`OPENAI_API_KEY`.
-
-> **Important**: Keys are fake placeholders. Replace them with real credentials
-> before first run. Hard‑coding is **not** recommended in production.
-
 ## Customising field extraction
 
 Regex patterns for electricity and carbon values live in `pipeline.py`.
 Modify `ENERGY_RE` and `CARBON_RE` or extend `extract_fields()` to
 handle additional metrics.
-
-## License
-
-MIT – Feel free to fork, adapt and deploy.

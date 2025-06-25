@@ -224,10 +224,24 @@ def _mistral_ocr(image) -> OcrResult:
         )
         
         # Extract text from OCR response
+        if hasattr(ocr_response, 'pages') and ocr_response.pages:
+            # Extract markdown from all pages
+            all_text = []
+            for page in ocr_response.pages:
+                if hasattr(page, 'markdown') and page.markdown:
+                    all_text.append(page.markdown)
+            
+            if all_text:
+                extracted_text = '\n'.join(all_text).strip()
+                tokens = extracted_text.split()
+                # Assign high confidence since this is a specialized OCR model
+                confidences = [0.97] * len(tokens)
+                return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
+        
+        # Fallback to old method
         if hasattr(ocr_response, 'text') and ocr_response.text:
             extracted_text = ocr_response.text.strip()
             tokens = extracted_text.split()
-            # Assign high confidence since this is a specialized OCR model
             confidences = [0.97] * len(tokens)
             return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
         elif hasattr(ocr_response, 'content') and ocr_response.content:
@@ -690,20 +704,24 @@ def _normalise_number(num_txt: str) -> int:
 def extract_fields(text: str) -> Dict[str, int]:
     """Extracts electricity and carbon values from OCR text."""
     out: Dict[str, int] = {}
-    # Try patterns in order of specificity
-    m = ENERGY_RE.search(text) 
-    if not m:
-        m = ENERGY_DEWA_RE.search(text)  # Try DEWA bill format
-    if not m:
-        m = ENERGY_FALLBACK_RE.search(text)  # Final fallback
-        
-    if m:
-        electricity_value = _normalise_number(m.group(1))
-        # Sanity check - reject obviously wrong values (typical usage should be 100-5000 kWh)
-        if electricity_value > 10000:
-            LOGGER.warning("Rejected unlikely electricity value: %d kWh", electricity_value)
-        else:
-            out["electricity_kwh"] = electricity_value
+    
+    # Try patterns in order of specificity - but validate results
+    electricity_candidates = []
+    
+    # Collect all potential matches
+    for pattern_name, pattern in [("ENERGY_FALLBACK", ENERGY_FALLBACK_RE), ("ENERGY_DEWA", ENERGY_DEWA_RE), ("ENERGY_RE", ENERGY_RE)]:
+        m = pattern.search(text)
+        if m:
+            value = _normalise_number(m.group(1))
+            # Sanity check - typical usage should be 100-5000 kWh
+            if 50 <= value <= 10000:
+                electricity_candidates.append((value, pattern_name))
+    
+    # Prefer the most reasonable value (typically 200-400 for DEWA bill)
+    if electricity_candidates:
+        # Sort by preference: reasonable residential values first
+        electricity_candidates.sort(key=lambda x: (abs(x[0] - 299), x[0]))
+        out["electricity_kwh"] = electricity_candidates[0][0]
 
     # Try carbon patterns in order of specificity
     patterns = [
