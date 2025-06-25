@@ -9,7 +9,7 @@ import config
 
 @patch('pipeline.np')
 @patch('pipeline._auto_rotate', return_value=Mock())
-@patch('pipeline.preprocess_image', return_value=Mock())
+@patch('pipeline.preprocess', return_value=(Mock(), {}))
 @patch('pipeline.pytesseract')
 @patch('pipeline.easyocr')
 @patch('pipeline.PaddleOCR')

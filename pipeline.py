@@ -108,27 +108,90 @@ def _auto_rotate(img):
     return img
 
 
-def preprocess_image(image):
-    """Convert Pillow image to cleaned grayscale numpy array."""
-    if np is None:
-        return None  # noqa: E701 - preprocessing skipped
+def preprocess(image, dpi: int = 300):
+    """Clean and deskew an image for OCR.
+
+    Steps:
+    1. Estimate dominant text angle via Hough transform and rotate if the angle
+       exceeds ±0.5°.
+    2. Apply CLAHE contrast normalisation with a clip limit capped at ``2.0``.
+    3. Perform adaptive Sauvola binarisation to preserve light glyphs.
+
+    Returns the processed :class:`PIL.Image.Image` and a ``meta`` dictionary with
+    the rotation angle and other parameters for deterministic reuse.
+    """
+
+    meta = {"deskew_angle": 0.0, "clahe_clip_limit": 2.0, "binarization": "sauvola", "dpi": dpi}
+
+    if np is None or cv2 is None:
+        # Minimal fallback without OpenCV or numpy
+        return image.convert("L"), meta
 
     arr = np.array(image)
-    if cv2:
+    if arr.ndim == 3:
         gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return thresh
-    # Fallback using Pillow only
-    return np.array(image.convert("L"))
+    else:
+        gray = arr
+
+    # ------------------------------------------------------------------
+    # Deskew via Hough transform
+    # ------------------------------------------------------------------
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    lines = cv2.HoughLines(edges, 1, np.pi / 180.0, 200)
+    angle = 0.0
+    if lines is not None and len(lines) > 0:
+        angles = []
+        for line in lines:
+            rho, theta = line[0]
+            ang = np.rad2deg(theta) - 90.0
+            if -45 < ang < 45:
+                angles.append(ang)
+        if angles:
+            angle = float(np.median(angles))
+    meta["deskew_angle"] = angle
+
+    if abs(angle) > 0.5:
+        (h, w) = gray.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+        gray = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_LINEAR, borderValue=255)
+
+    # ------------------------------------------------------------------
+    # Contrast normalisation using CLAHE
+    # ------------------------------------------------------------------
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    norm = clahe.apply(gray)
+
+    # ------------------------------------------------------------------
+    # Adaptive Sauvola binarisation
+    # ------------------------------------------------------------------
+    try:
+        from skimage.filters import threshold_sauvola
+
+        window = max(25, dpi // 12)
+        thresh = threshold_sauvola(norm, window_size=window)
+        binary = (norm > thresh).astype(np.uint8) * 255
+    except Exception:
+        # Fallback to global Otsu if skimage is unavailable
+        _, binary = cv2.threshold(norm, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    return Image.fromarray(binary), meta
+
+
+def preprocess_image(image):
+    """Legacy wrapper returning a numpy array."""
+    if np is None:
+        return None
+
+    processed, _ = preprocess(image)
+    return np.array(processed)
 
 
 def _tesseract_ocr(image) -> OcrResult:
     if pytesseract is None:
         raise RuntimeError("pytesseract is not available")
     image = _auto_rotate(image)
-    img = preprocess_image(image)
-    if img is None:
-        img = image
+    processed, _ = preprocess(image)
+    img = np.array(processed) if np is not None else processed
     config = f"--oem {TESSERACT_OEM} --psm {TESSERACT_PSM}"
     data = pytesseract.image_to_data(
         img,
@@ -466,7 +529,14 @@ def run_ocr(file_path: Path) -> OcrResult:
 # Field extraction
 # -----------------------------------------------------------------------------
 # Primary energy regex - look for consumption context and reasonable kWh values
-ENERGY_RE = re.compile(r"(?:consumption|consumed|usage|total|reading).*?(\d{1,4}(?:[,\s]\d{3})*)\s*k\s*W\s*h", re.I | re.DOTALL)
+# Primary energy regex - avoid digits following "reading" which can capture
+# meter readings. We exclude "reading" to prevent false matches like
+# "Current reading: 19462" from being parsed as consumption.
+ENERGY_RE = re.compile(
+    r"(?:consumption|consumed|usage|total)"  # context keywords
+    r".*?(\d[\d\s,]{0,6})\s*k\s*W\s*h",  # digits may be split by spaces or commas
+    re.I | re.DOTALL,
+)
 # Fallback 1: DEWA bill format - number followed by "Electricity" (for cases like "299  Electricity")
 ENERGY_DEWA_RE = re.compile(r"\b(\d{2,4})\s+Electricity", re.I)
 # Fallback 2: standalone kWh values in reasonable range

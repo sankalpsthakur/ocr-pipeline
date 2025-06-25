@@ -6,6 +6,7 @@ import pytest
 import sys, pathlib
 from unittest.mock import Mock, patch, MagicMock
 import numpy as np
+from PIL import Image, ImageDraw
 
 # Add repository root to path so tests can import modules directly
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
@@ -75,14 +76,14 @@ class TestOCREngineIntegration:
         assert OCR_BACKEND in ["tesseract", "easyocr", "paddleocr"]
     
     @patch('pipeline.pytesseract')
-    @patch('pipeline.preprocess_image')
+    @patch('pipeline.preprocess')
     @patch('pipeline._auto_rotate')
     def test_tesseract_ocr_pipeline(self, mock_rotate, mock_preprocess, mock_tesseract):
         """Test complete Tesseract OCR pipeline."""
         # Setup mocks
         mock_image = Mock()
         mock_rotate.return_value = mock_image
-        mock_preprocess.return_value = mock_image
+        mock_preprocess.return_value = (mock_image, {})
         mock_tesseract.image_to_data.return_value = {
             'text': ['Electricity', '299', 'kWh', 'Carbon', '120'],
             'conf': [95, 90, 85, 92, 88]
@@ -130,6 +131,22 @@ class TestOCREngineIntegration:
         """Test error when Tesseract is not available."""
         with pytest.raises(RuntimeError, match="pytesseract is not available"):
             pipeline._tesseract_ocr(Mock())
+
+    def test_preprocess_deskew(self):
+        """Verify deskew and binarisation pipeline."""
+        img = Image.new("L", (200, 80), 255)
+        draw = ImageDraw.Draw(img)
+        for y in range(20, 60, 20):
+            draw.line((10, y, 190, y), fill=0, width=3)
+        rotated = img.rotate(7, expand=True, fillcolor=255)
+
+        processed, meta = pipeline.preprocess(rotated, dpi=300)
+
+        assert isinstance(processed, Image.Image)
+        assert "deskew_angle" in meta
+        arr = np.array(processed)
+        assert arr.ndim == 2
+        assert set(np.unique(arr)).issubset({0, 255})
 
 
 class TestOCRAccuracyMetrics:
