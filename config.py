@@ -34,9 +34,14 @@ TAU_FIELD_ACCEPT  = 0.95  # auto-accept threshold
 TAU_ENHANCER_PASS = 0.90  # after enhancer / alt engine
 TAU_LLM_PASS      = 0.85  # LLM fallback
 
-# --- OpenAI -------------------------------------------------------------------
+# --- Google Gemini -----------------------------------------------------------
 # Vision model used for LLM fallback
-OPENAI_MODEL      = "gpt-4o"
-# Hard-coded API key for GPT-4o fallback
-OPENAI_API_KEY    = "sk-proj-REPLACE_WITH_YOUR_OPENAI_API_KEY_HERE"
+GEMINI_MODEL      = "gemini-2.0-flash"
+# API key for Gemini Flash fallback
+GEMINI_API_KEY    = "AIzaSyAw1RNympifj3sIZlUvhxVH5trb8Mz6JrA"
+
+# --- Mistral ------------------------------------------------------------------
+# Mistral OCR API settings
+MISTRAL_API_KEY   = "BJRjnwMi6jvna8zrfIvxyyr9Tf54HYgW"
+MISTRAL_MODEL     = "mistral-ocr-latest"
 

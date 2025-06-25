@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.DS_Store
+
 
 # Test/sample files (exclude critical test files)
 *.png
@@ -19,3 +21,4 @@ venv/
 venv_new/
 env/
 .env
+.DS_Store
