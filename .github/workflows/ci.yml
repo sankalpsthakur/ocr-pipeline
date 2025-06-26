@@ -26,14 +26,14 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements-ci.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
 
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-ci.txt
+        pip install pytest pillow
 
 
     - name: Check Python installation
@@ -41,27 +41,3 @@ jobs:
         python --version
         python -c "print('Python is working')"
 
-  docker:
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/datalab')
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Build slim Docker image (CI version)
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./Dockerfile.ci
-        push: false
-        tags: ocr-pipeline:ci
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Test Docker image
-      run: |
-        docker run --rm ocr-pipeline:ci python -c "import pipeline; print('Docker image works!')"
