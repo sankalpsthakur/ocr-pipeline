@@ -160,7 +160,7 @@ by each OCR engine.
 | C‑1   | Mistral      | 150 ms               | 0.0020 / page    | API burstable    |
 | C‑2   | Datalab      | 25 ms                | 0.0015 / page    | API              |
 | C‑3   | Gemma VLM    | 120 ms               | 0               | Edge GPU         |
-| D     | Gemini Flash | 500 ms               | 0.0050 / page    | JSON + reasoning |
+| D     | Gemini Flash | 500 ms               | 0.0050wh / page    | JSON + reasoning |
 
 **Configuration:**
 Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").

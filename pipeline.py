@@ -258,7 +258,7 @@ def _mistral_ocr(image) -> OcrResult:
         return OcrResult("", [], [])
 
 def _datalab_ocr(image) -> OcrResult:
-    """Datalab OCR API integration."""
+    """Datalab OCR API integration with full response extraction."""
     if requests is None:
         raise RuntimeError("requests package not available for Datalab")
     
@@ -270,6 +270,7 @@ def _datalab_ocr(image) -> OcrResult:
     try:
         # Convert PIL image to bytes for file upload
         import io
+        import time
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
@@ -277,24 +278,84 @@ def _datalab_ocr(image) -> OcrResult:
         image.save(buffer, format='PNG')
         buffer.seek(0)
         
-        # Prepare the request
+        # Prepare the initial request
         url = config.DATALAB_URL
         headers = {"X-Api-Key": api_key}
         files = {'file': ('image.png', buffer, 'image/png')}
         
-        # Make the request
+        # Make the initial request
         response = requests.post(url, files=files, headers=headers)
         response.raise_for_status()
         
-        # Parse the response
+        # Parse the initial response
         data = response.json()
+        LOGGER.info(f"Datalab initial response: {data}")
         
-        # Extract text from the response
-        if 'text' in data and data['text']:
+        # Handle async processing if request_check_url is provided
+        if 'request_check_url' in data:
+            check_url = data['request_check_url']
+            max_polls = 150  # 5 minutes with 2-second intervals
+            
+            for i in range(max_polls):
+                time.sleep(2)
+                check_response = requests.get(check_url, headers=headers)
+                check_response.raise_for_status()
+                data = check_response.json()
+                
+                LOGGER.info(f"Datalab polling attempt {i+1}: status={data.get('status', 'unknown')}")
+                
+                if data.get("status") == "complete":
+                    break
+            else:
+                LOGGER.warning("Datalab OCR polling timed out")
+                return OcrResult("", [], [])
+        
+        # Log the complete response for analysis
+        LOGGER.info(f"Datalab complete response: {data}")
+        
+        # Extract comprehensive data from the response
+        if data.get('success') and data.get('pages'):
+            all_text_parts = []
+            all_confidences = []
+            bounding_boxes = []
+            
+            for page in data['pages']:
+                page_text_parts = []
+                for text_line in page.get('text_lines', []):
+                    text = text_line.get('text', '').strip()
+                    confidence = text_line.get('confidence', 0.0)
+                    bbox = text_line.get('bbox', [])
+                    polygon = text_line.get('polygon', [])
+                    
+                    if text:
+                        # Split text into tokens and assign same confidence to each
+                        tokens = text.split()
+                        page_text_parts.extend(tokens)
+                        all_confidences.extend([confidence] * len(tokens))
+                        
+                        # Store bounding box info (for potential future use)
+                        bounding_boxes.append({
+                            'text': text,
+                            'bbox': bbox,
+                            'polygon': polygon,
+                            'confidence': confidence
+                        })
+                
+                all_text_parts.extend(page_text_parts)
+            
+            if all_text_parts:
+                extracted_text = ' '.join(all_text_parts)
+                LOGGER.info(f"Datalab extracted text: {extracted_text}")
+                LOGGER.info(f"Datalab confidence scores: {all_confidences}")
+                LOGGER.info(f"Datalab bounding boxes: {len(bounding_boxes)} regions")
+                return OcrResult(text=extracted_text, tokens=all_text_parts, confidences=all_confidences)
+        
+        # Fallback to simple text extraction for backwards compatibility
+        elif 'text' in data and data['text']:
             extracted_text = data['text'].strip()
             tokens = extracted_text.split()
-            # High confidence for specialized OCR API
             confidences = [0.95] * len(tokens)
+            LOGGER.info(f"Datalab fallback text: {extracted_text}")
             return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
         else:
             LOGGER.warning("No text found in Datalab OCR response")
@@ -394,10 +455,12 @@ def _paddleocr_ocr(image) -> OcrResult:
                 show_log=False,
                 enable_mkldnn=False,
                 cpu_threads=1,
-                det_limit_side_len=320,  # Minimal resolution for 8GB Mac
+                det_limit_side_len=960,  # Increased resolution for better accuracy
                 rec_batch_num=1,
                 max_batch_size=1,
-                drop_score=0.8  # Higher threshold to reduce processing
+                drop_score=0.5,  # Lower threshold for more text detection
+                use_mp=False,  # Disable multiprocessing
+                total_process_num=1  # Single process
             )
         except Exception as e:
             LOGGER.warning(f"Failed to initialize PaddleOCR: {e}")
