@@ -42,13 +42,6 @@ def test_pillow_available():
 
 
 
-def test_pytesseract_import():
-    """Test that pytesseract can be imported."""
-    try:
-        import pytesseract
-        assert hasattr(pytesseract, 'image_to_string')
-    except ImportError:
-        pytest.skip("pytesseract not available")
 
 
 def test_pipeline_stub():

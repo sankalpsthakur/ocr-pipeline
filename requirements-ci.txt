@@ -6,7 +6,6 @@ black>=24.0.0
 
 # Core dependencies for basic testing
 pillow>=10.0.0
-pytesseract>=0.3.10
 
 # Exclude ALL ML dependencies that require compilation:
 # - easyocr (requires torch)

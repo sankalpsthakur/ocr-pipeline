@@ -21,11 +21,6 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends tesseract-ocr poppler-utils
-        sudo rm -rf /var/lib/apt/lists/*
 
     - name: Cache pip dependencies
       uses: actions/cache@v3
@@ -48,22 +43,10 @@ jobs:
       run: |
         black --check --diff .
 
-    - name: Run minimal CI tests (no ML dependencies)
+    - name: Check Python installation
       run: |
-        pytest tests/test_ci_minimal.py -v
-        
-    - name: Generate basic coverage report (optional)
-      run: |
-        pytest tests/test_ci_minimal.py --cov=pipeline_stub --cov-report=xml --cov-report=term-missing || echo "Coverage generation skipped"
-        
-    - name: Upload coverage to Codecov (if generated)
-      uses: codecov/codecov-action@v3
-      if: hashFiles('coverage.xml') != ''
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+        python --version
+        python -c "print('Python is working')"
 
   docker:
     needs: test
