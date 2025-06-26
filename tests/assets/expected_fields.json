@@ -1,0 +1,29 @@
+{
+  "ActualBill.png": {
+    "electricity_kwh": 299,
+    "carbon_kgco2e": 120,
+    "invoice_number": "100045272594",
+    "issue_date": "21/05/2025",
+    "account_number": "2052672303",
+    "min_confidence_thresholds": {
+      "tesseract": 0.5,
+      "easyocr": 0.7,
+      "paddleocr": 0.8,
+      "final_pipeline": 0.9,
+      "mistral_ocr": 0.95,
+      "gemma_vlm": 0.95,
+      "gemini_flash": 1.0
+    }
+  },
+  "ActualBill.pdf": {
+    "electricity_kwh": 299,
+    "carbon_kgco2e": 120,
+    "invoice_number": "100045272594",
+    "issue_date": "21/05/2025",
+    "account_number": "2052672303",
+    "min_confidence_thresholds": {
+      "pdfminer": 1.0,
+      "final_pipeline": 0.9
+    }
+  }
+}
