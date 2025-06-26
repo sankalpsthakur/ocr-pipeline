@@ -257,6 +257,53 @@ def _mistral_ocr(image) -> OcrResult:
         LOGGER.warning("Mistral OCR failed: %s", exc)
         return OcrResult("", [], [])
 
+def _datalab_ocr(image) -> OcrResult:
+    """Datalab OCR API integration."""
+    if requests is None:
+        raise RuntimeError("requests package not available for Datalab")
+    
+    api_key = config.DATALAB_API_KEY
+    if not api_key:
+        LOGGER.warning("Datalab API key not configured; skipping Datalab OCR")
+        return OcrResult("", [], [])
+    
+    try:
+        # Convert PIL image to bytes for file upload
+        import io
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        # Prepare the request
+        url = config.DATALAB_URL
+        headers = {"X-Api-Key": api_key}
+        files = {'file': ('image.png', buffer, 'image/png')}
+        
+        # Make the request
+        response = requests.post(url, files=files, headers=headers)
+        response.raise_for_status()
+        
+        # Parse the response
+        data = response.json()
+        
+        # Extract text from the response
+        if 'text' in data and data['text']:
+            extracted_text = data['text'].strip()
+            tokens = extracted_text.split()
+            # High confidence for specialized OCR API
+            confidences = [0.95] * len(tokens)
+            return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
+        else:
+            LOGGER.warning("No text found in Datalab OCR response")
+            return OcrResult("", [], [])
+            
+    except Exception as exc:
+        LOGGER.warning("Datalab OCR failed: %s", exc)
+        return OcrResult("", [], [])
+
 def _gemma_vlm_ocr(image, bounding_boxes=None) -> OcrResult:
     """Gemma VLM OCR with optional bounding boxes."""
     if requests is None:
@@ -485,6 +532,19 @@ def _run_ocr_engine(file_path: Path, dpi: int = None, is_image: bool = False, en
                 tok.extend(res.tokens)
                 conf.extend(res.confidences)
             return OcrResult(joined, tok, conf)
+    elif engine == "datalab":
+        if is_image:
+            img = load_image(file_path)
+            return _datalab_ocr(img)
+        else:
+            images = pdf_to_images(file_path, dpi=dpi)
+            joined, tok, conf = "", [], []
+            for img in images:
+                res = _datalab_ocr(img)
+                joined += res.text + "\n"
+                tok.extend(res.tokens)
+                conf.extend(res.confidences)
+            return OcrResult(joined, tok, conf)
     elif engine == "gemma_vlm":
         # For Gemma VLM, we might want to extract bounding boxes from traditional OCR first
         bounding_boxes = None
@@ -597,7 +657,7 @@ def gemini_flash_fallback(image_path: Path) -> Dict[str, int]:
         return {}
 
 def run_ocr(file_path: Path) -> OcrResult:
-    """Hierarchical OCR cascade: tesseract → easyOCR → paddleOCR → mistralOCR → Gemma VLM → Gemini Flash."""
+    """Hierarchical OCR cascade: tesseract → easyOCR → paddleOCR → mistralOCR → Datalab → Gemma VLM → Gemini Flash."""
     # Check if file is an image
     is_image = file_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
     
@@ -611,7 +671,7 @@ def run_ocr(file_path: Path) -> OcrResult:
             LOGGER.warning("pdfminer failed: %s", exc)
 
     # Hierarchical OCR approach - ordered by priority
-    engines = ["tesseract", "easyocr", "paddleocr", "mistral", "gemma_vlm"]
+    engines = ["tesseract", "easyocr", "paddleocr", "mistral", "datalab", "gemma_vlm"]
     
     for engine in engines:
         try:

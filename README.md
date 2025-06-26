@@ -126,6 +126,17 @@ by each OCR engine.
 - **VLM/LLM**: Fixed high confidence (96-97%) based on model specialization
 - **Comparison**: Accuracy (correct extraction) + Confidence + Robustness across formats
 
+**Engine Performance Comparison:**
+
+| Stage | Engine       | Latency /page (A100) | Unit cost (USD) | Notes            |
+| ----- | ------------ | -------------------- | --------------- | ---------------- |
+| A     | Tesseract    | 50 ms (CPU)          | 0               | Baseline         |
+| B     | PaddleOCR    | 25 ms                | 0               | Edge GPU         |
+| C‑1   | Mistral      | 150 ms               | 0.0020 / page    | API burstable    |
+| C‑2   | Datalab      | 25 ms                | 0.0015 / page    | API              |
+| C‑3   | Gemma VLM    | 120 ms               | 0               | Edge GPU         |
+| D     | Gemini Flash | 500 ms               | 0.0050 / page    | JSON + reasoning |
+
 **Configuration:**
 Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
 Tesseract language, OEM and PSM settings can be adjusted in `config.py` to match document type.
@@ -148,9 +159,10 @@ override both engines with a single value.
 2.  EasyOCR          # open-source CNN/LSTM reader  
 3.  PaddleOCR        # high-accuracy CRNN/CLS pipeline
 4.  Mistral OCR      # cloud, vision-LLM specialised
-5.  Gemma VLM OCR    # Gemini 2.0 Flash vision model
+5.  Datalab          # high-performance API OCR
+6.  Gemma VLM OCR    # Gemini 2.0 Flash vision model
 ───────────────────────────────────────────────
-6.  Gemini Flash     # final LLM fallback (field-specific JSON)
+7.  Gemini Flash     # final LLM fallback (field-specific JSON)
 ```
 
 ### How the hierarchy works

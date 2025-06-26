@@ -72,7 +72,7 @@ class TestOCREngineIntegration:
     def test_configuration_loading(self):
         """Test that OCR backend configuration is valid."""
         from config import OCR_BACKEND
-        assert OCR_BACKEND in ["tesseract", "easyocr", "paddleocr"]
+        assert OCR_BACKEND in ["tesseract", "easyocr", "paddleocr", "mistral", "datalab", "gemma_vlm"]
     
     @patch('pipeline.pytesseract')
     @patch('pipeline.preprocess_image')
@@ -130,6 +130,93 @@ class TestOCREngineIntegration:
         """Test error when Tesseract is not available."""
         with pytest.raises(RuntimeError, match="pytesseract is not available"):
             pipeline._tesseract_ocr(Mock())
+    
+    @patch('pipeline.requests')
+    @patch('pipeline.config')
+    def test_datalab_ocr_integration(self, mock_config, mock_requests):
+        """Test Datalab OCR integration and result processing."""
+        # Setup mocks
+        mock_config.DATALAB_API_KEY = "test_api_key"
+        mock_config.DATALAB_URL = "https://api.test.com/ocr"
+        
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            'text': 'Electricity 299 kWh Carbon 120 kgCO2e'
+        }
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
+        
+        mock_image = Mock()
+        mock_image.mode = 'RGB'
+        mock_image.save = Mock()
+        
+        result = pipeline._datalab_ocr(mock_image)
+        
+        assert result.text == "Electricity 299 kWh Carbon 120 kgCO2e"
+        assert len(result.tokens) == 6
+        assert all(conf == 0.95 for conf in result.confidences)
+        mock_requests.post.assert_called_once()
+    
+    @patch('pipeline.requests')
+    @patch('pipeline.config')
+    def test_datalab_ocr_no_api_key(self, mock_config, mock_requests):
+        """Test Datalab OCR when API key is not configured."""
+        mock_config.DATALAB_API_KEY = ""
+        
+        mock_image = Mock()
+        result = pipeline._datalab_ocr(mock_image)
+        
+        assert result.text == ""
+        assert result.tokens == []
+        assert result.confidences == []
+        mock_requests.post.assert_not_called()
+    
+    @patch('pipeline.requests')
+    @patch('pipeline.config')
+    def test_datalab_ocr_api_error(self, mock_config, mock_requests):
+        """Test Datalab OCR when API call fails."""
+        mock_config.DATALAB_API_KEY = "test_api_key"
+        mock_config.DATALAB_URL = "https://api.test.com/ocr"
+        
+        mock_requests.post.side_effect = Exception("API Error")
+        
+        mock_image = Mock()
+        mock_image.mode = 'RGB'
+        mock_image.save = Mock()
+        
+        result = pipeline._datalab_ocr(mock_image)
+        
+        assert result.text == ""
+        assert result.tokens == []
+        assert result.confidences == []
+    
+    @patch('pipeline.requests')
+    @patch('pipeline.config')
+    def test_datalab_ocr_empty_response(self, mock_config, mock_requests):
+        """Test Datalab OCR when API returns empty text."""
+        mock_config.DATALAB_API_KEY = "test_api_key"
+        mock_config.DATALAB_URL = "https://api.test.com/ocr"
+        
+        mock_response = Mock()
+        mock_response.json.return_value = {'text': ''}
+        mock_response.raise_for_status.return_value = None
+        mock_requests.post.return_value = mock_response
+        
+        mock_image = Mock()
+        mock_image.mode = 'RGB'
+        mock_image.save = Mock()
+        
+        result = pipeline._datalab_ocr(mock_image)
+        
+        assert result.text == ""
+        assert result.tokens == []
+        assert result.confidences == []
+    
+    @patch('pipeline.requests', None)
+    def test_datalab_ocr_requests_not_available(self):
+        """Test error when requests library is not available."""
+        with pytest.raises(RuntimeError, match="requests package not available for Datalab"):
+            pipeline._datalab_ocr(Mock())
 
 
 class TestOCRAccuracyMetrics:
@@ -244,7 +331,7 @@ class TestErrorHandling:
                 # Create a mock that bypasses the actual backend logic
                 with patch.object(pipeline, '_run_ocr_engine') as mock_run:
                     mock_run.side_effect = ValueError("Unsupported OCR backend: unsupported_engine")
-                    mock_run(pathlib.Path("dummy.png"), is_image=True)
+                    mock_run(pathlib.Path("dummy.png"), is_image=True, engine='unsupported_engine')
     
     def test_number_normalization_edge_cases(self):
         """Test number normalization with various inputs."""

@@ -45,3 +45,8 @@ GEMINI_API_KEY    = "AIzaSyAw1RNympifj3sIZlUvhxVH5trb8Mz6JrA"
 MISTRAL_API_KEY   = "BJRjnwMi6jvna8zrfIvxyyr9Tf54HYgW"
 MISTRAL_MODEL     = "mistral-ocr-latest"
 
+# --- Datalab ------------------------------------------------------------------
+# Datalab OCR API settings
+DATALAB_API_KEY   = "vfaQi0_wwj5emvhyU2JtFJNtsLKSbkMsvaaD3nBwWLY"
+DATALAB_URL       = "https://www.datalab.to/api/v1/ocr"
+
