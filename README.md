@@ -117,27 +117,49 @@ $ pytest tests/test_pipeline_performance.py -q
 Confidence is computed as the geometric mean of token confidences reported
 by each OCR engine.
 
-**Test Results (DEWA Bill Sample):**
+## Performance Benchmarks (ActualBill.png)
 
-| Method | Input Type | Confidence | Electricity | Carbon | Notes |
-|--------|------------|------------|-------------|---------|-------|
-| **OCR Engines (PNG Image)** |
-| Tesseract | PNG Image | 60.0% | ✅ 299 kWh | ✅ 120 kgCO2e | Low confidence, triggers next engine |
-| EasyOCR | PNG Image | 74.1% | ✅ 299 kWh | ✅ 120 kgCO2e | Good accuracy with enhanced patterns |
-| PaddleOCR | PNG Image | 94.2% | ✅ 299 kWh | ✅ 120 kgCO2e | Highest Confidence Correct Extraction |
-| **VLM/LLM Engines (PNG Image)** |
-| Mistral OCR | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Specialized OCR model, high accuracy |
-| Datalab | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | High-performance API OCR, 25ms latency |
-| Gemma VLM | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Vision-language model, excellent extraction |
-| **LLM Fallback (PNG Image)** |
-| Gemini Flash | PNG Image | NA | ✅ 299 kWh | ✅ 120 kgCO2e | Final fallback for field-specific JSON extraction |
-| **Digital Text Extraction (PDF)** |
-| pdfminer.six | PDF | 100% | ✅ 299 kWh | ✅ 120 kgCO2e | Perfect digital text extraction |
+### Traditional OCR Engines - Target Field Extraction
 
-**Confidence Metrics:**
-- **Traditional OCR**: Geometric mean of token-level confidence scores from engines
-- **VLM/LLM**: Fixed high confidence (96-97%) based on model specialization
-- **Comparison**: Accuracy (correct extraction) + Confidence + Robustness across formats
+| Engine | Confidence | Char Acc | Word Acc | Field Acc | Overall Acc | Electricity | Carbon | Status |
+|--------|------------|----------|----------|-----------|-------------|-------------|---------|---------|
+| **Final Pipeline** | **0.970** | **40.7%** | **100.0%** | **100.0%** | **93.2%** | **✅ 299 kWh** | **✅ 120 kg** | **Working** |
+| EasyOCR | 0.741 | 11.3% | 93.2% | 100.0% | 82.7% | ✅ 299 kWh | ✅ 120 kg | Working |
+| Tesseract | 0.600 | 5.6% | 77.3% | 100.0% | 76.3% | ✅ 299 kWh | ✅ 120 kg | Working |
+| Datalab OCR | 0.000 | 0.0% | 0.0% | 0.0% | 0.0% | ❌ API Error | ❌ API Error | Requires Paid Subscription |
+
+### VLM/LLM Fallback Engines - Target Field Extraction
+
+| Engine | Confidence | Field Acc | Overall Acc | Electricity | Carbon | Status |
+|--------|------------|-----------|-------------|-------------|---------|---------|
+| **Mistral OCR** | **0.970** | **100.0%** | **99.1%** | **✅ 299 kWh** | **✅ 120 kg** | **Working** |
+| Gemma VLM | 0.960 | 100.0% | 98.8% | ✅ 299 kWh | ✅ 120 kg | Working |
+
+### Gemini Flash Final Fallback
+
+| Engine | Field Acc | Overall Acc | Electricity | Carbon | Status |
+|--------|-----------|-------------|-------------|---------|---------|
+| **Gemini Flash** | **100.0%** | **100.0%** | **✅ 299 kWh** | **✅ 120 kg** | **Working** |
+
+### Performance Ranking
+
+1. **Mistral OCR**: 99.1% overall accuracy
+2. **Gemma VLM**: 98.8% overall accuracy  
+3. **Final Pipeline**: 93.2% overall accuracy
+4. **Gemini Flash**: 100.0% field accuracy (JSON extraction mode)
+
+### Accuracy Definitions
+
+- **Character Accuracy**: Sequence similarity of normalized text (spaces removed, lowercase)
+- **Word Accuracy**: Percentage of ground truth words correctly identified in OCR text
+- **Field Accuracy**: Percentage of target business fields correctly extracted (electricity kWh, carbon kg CO₂e)
+- **Overall Accuracy**: Weighted composite score prioritizing field extraction success over text accuracy
+
+**Key Findings:**
+- **Best Overall Performance**: Mistral OCR and Gemma VLM achieve highest overall accuracy
+- **Traditional OCR**: Final Pipeline outperforms individual engines through hierarchical cascade
+- **Perfect Field Extraction**: Multiple engines achieve 100% accuracy for target fields (299 kWh, 120 kg CO₂e)
+- **Datalab OCR**: Enhanced with full API response extraction but requires paid subscription
 
 **Ultra-Compressed File Performance:**
 
@@ -160,7 +182,7 @@ by each OCR engine.
 | C‑1   | Mistral      | 150 ms               | 0.0020 / page    | API burstable    |
 | C‑2   | Datalab      | 25 ms                | 0.0015 / page    | API              |
 | C‑3   | Gemma VLM    | 120 ms               | 0               | Edge GPU         |
-| D     | Gemini Flash | 500 ms               | 0.0050wh / page    | JSON + reasoning |
+| D     | Gemini Flash | 500 ms               | 0.0050 / page    | JSON + reasoning |
 
 **Configuration:**
 Set `OCR_BACKEND` in `config.py` to choose engine ("tesseract", "easyocr", "paddleocr").
