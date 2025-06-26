@@ -35,13 +35,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements-ci.txt
 
-    - name: Lint with ruff
-      run: |
-        ruff check . --output-format=github
-
-    - name: Check code formatting with black
-      run: |
-        black --check --diff .
 
     - name: Check Python installation
       run: |

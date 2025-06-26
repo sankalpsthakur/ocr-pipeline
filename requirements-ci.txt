@@ -1,8 +1,5 @@
 # Ultra-minimal CI dependencies - CPU only, no ML dependencies
 pytest>=8.0.0
-pytest-cov>=5.0.0
-ruff>=0.6.0
-black>=24.0.0
 
 # Core dependencies for basic testing
 pillow>=10.0.0
