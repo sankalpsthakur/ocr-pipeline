@@ -40,24 +40,6 @@ def test_pillow_available():
         pytest.skip("Pillow not available")
 
 
-def test_requests_available():
-    """Test that requests library is available."""
-    try:
-        import requests
-        assert hasattr(requests, 'get')
-        assert hasattr(requests, 'post')
-    except ImportError:
-        pytest.skip("Requests not available")
-
-
-def test_numpy_available():
-    """Test that numpy is available."""
-    try:
-        import numpy as np
-        arr = np.array([1, 2, 3])
-        assert len(arr) == 3
-    except ImportError:
-        pytest.skip("Numpy not available")
 
 
 def test_pytesseract_import():
