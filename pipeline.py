@@ -833,17 +833,17 @@ def _mistral_ocr(image) -> OcrResult:
         return OcrResult("", [], [])
 
 def _datalab_ocr(image) -> OcrResult:
-    """Datalab OCR API integration."""
+    """Datalab OCR API integration with structured bbox and confidence extraction."""
     if requests is None:
         raise RuntimeError("requests package not available for Datalab")
     
     api_key = config.DATALAB_API_KEY
     if not api_key:
         LOGGER.warning("Datalab API key not configured; skipping Datalab OCR")
-        return OcrResult("", [], [])
+        return OcrResult("", [], [], "datalab")
     
     try:
-        import io
+        import io, time
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
@@ -855,22 +855,118 @@ def _datalab_ocr(image) -> OcrResult:
         headers = {"X-Api-Key": api_key}
         files = {'file': ('image.png', buffer, 'image/png')}
         
+        # Submit initial request
         response = requests.post(url, files=files, headers=headers)
         response.raise_for_status()
         
-        data = response.json()
-        if 'text' in data and data['text']:
-            extracted_text = data['text'].strip()
-            tokens = extracted_text.split()
-            confidences = [0.95] * len(tokens)
-            return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
+        initial_data = response.json()
+        if not initial_data.get('success', False):
+            LOGGER.warning("Datalab OCR request failed: %s", initial_data.get('error', 'Unknown error'))
+            return OcrResult("", [], [], "datalab")
+        
+        # Poll for completion
+        check_url = initial_data.get('request_check_url')
+        if not check_url:
+            LOGGER.warning("No check URL provided by Datalab API")
+            return OcrResult("", [], [], "datalab")
+        
+        max_polls = 60  # Wait up to 2 minutes
+        for i in range(max_polls):
+            time.sleep(2)
+            check_response = requests.get(check_url, headers=headers)
+            check_response.raise_for_status()
+            data = check_response.json()
+            
+            if data.get("status") == "complete":
+                break
         else:
-            LOGGER.warning("No text found in Datalab OCR response")
-            return OcrResult("", [], [])
+            LOGGER.warning("Datalab OCR timed out after %d polls", max_polls)
+            return OcrResult("", [], [], "datalab")
+        
+        # Process the structured response
+        return _process_datalab_response(data)
             
     except Exception as exc:
         LOGGER.warning("Datalab OCR failed: %s", exc)
-        return OcrResult("", [], [])
+        return OcrResult("", [], [], "datalab")
+
+def _process_datalab_response(data: dict) -> OcrResult:
+    """Process Datalab API response to extract text, tokens, confidences, and bboxes."""
+    if not data.get('success', False):
+        LOGGER.warning("Datalab processing failed: %s", data.get('error', 'Unknown error'))
+        return OcrResult("", [], [], "datalab")
+    
+    pages = data.get('pages', [])
+    if not pages:
+        LOGGER.warning("No pages in Datalab response")
+        return OcrResult("", [], [], "datalab")
+    
+    # Combine all pages (usually just one for images)
+    all_tokens = []
+    all_confidences = []
+    all_bboxes = []
+    full_text_lines = []
+    
+    for page in pages:
+        text_lines = page.get('text_lines', [])
+        
+        for line in text_lines:
+            line_text = line.get('text', '').strip()
+            line_confidence = line.get('confidence', 0.0)
+            line_bbox = line.get('bbox')  # [x1, y1, x2, y2]
+            
+            if not line_text:
+                continue
+            
+            full_text_lines.append(line_text)
+            
+            # Split line into tokens and distribute confidence/bbox
+            line_tokens = line_text.split()
+            
+            if line_tokens and line_bbox:
+                # Estimate token-level bboxes by dividing the line bbox
+                x1, y1, x2, y2 = line_bbox
+                line_width = x2 - x1
+                char_count = len(line_text)
+                
+                current_x = x1
+                for token in line_tokens:
+                    # Estimate token bbox based on character proportion
+                    token_char_count = len(token)
+                    token_width = (token_char_count / char_count) * line_width if char_count > 0 else line_width / len(line_tokens)
+                    
+                    token_bbox = (
+                        current_x,
+                        y1, 
+                        min(current_x + token_width, x2),
+                        y2
+                    )
+                    
+                    all_tokens.append(token)
+                    all_confidences.append(line_confidence)
+                    all_bboxes.append(token_bbox)
+                    
+                    current_x += token_width + (line_width * 0.02)  # Add small spacing
+            else:
+                # Fallback for lines without bbox
+                for token in line_tokens:
+                    all_tokens.append(token)
+                    all_confidences.append(line_confidence)
+                    all_bboxes.append(None)
+    
+    # Create full text by joining lines
+    full_text = ' '.join(full_text_lines)
+    
+    LOGGER.info("Datalab OCR extracted %d tokens with %d bboxes from %d pages", 
+               len(all_tokens), len([b for b in all_bboxes if b]), len(pages))
+    
+    return OcrResult(
+        text=full_text,
+        tokens=all_tokens,
+        confidences=all_confidences,
+        engine="datalab",
+        bboxes=all_bboxes
+    )
 
 def _extract_high_confidence_regions(image, ocr_result: OcrResult) -> List[Image.Image]:
     """Extract high-confidence text regions from EasyOCR for VLM processing."""
