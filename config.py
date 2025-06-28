@@ -5,6 +5,37 @@ allowing users to control various aspects of text extraction without
 modifying the main pipeline code.
 """
 
+import torch
+import subprocess
+import psutil
+import os
+
+def _detect_gpu_availability():
+    """Auto-detect GPU availability for OCR engines."""
+    gpu_available = False
+    gpu_memory_gb = 0
+    
+    # Check for CUDA
+    if torch.cuda.is_available():
+        gpu_available = True
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    
+    # Check for Apple Metal (MPS)
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        gpu_available = True
+        # Estimate Metal memory (simplified)
+        gpu_memory_gb = 8.0  # Conservative estimate for Apple Silicon
+    
+    return gpu_available, gpu_memory_gb
+
+def _detect_system_memory():
+    """Detect available system RAM."""
+    return psutil.virtual_memory().total / (1024**3)
+
+# Auto-detect hardware capabilities
+_GPU_AVAILABLE, _GPU_MEMORY = _detect_gpu_availability()
+_SYSTEM_MEMORY = _detect_system_memory()
+
 # Maximum number of PDF pages to process
 MAX_PAGES = 3
 
@@ -18,8 +49,12 @@ TESSERACT_LANG    = "eng"          # Tesseract-specific language
 EASYOCR_LANG      = ["en"]         # EasyOCR language list
 PADDLEOCR_LANG    = "en"           # PaddleOCR language code
 
-# EasyOCR GPU acceleration (set to False for CPU-only)
-EASYOCR_GPU       = False
+# EasyOCR GPU acceleration - auto-detected based on hardware
+EASYOCR_GPU       = _GPU_AVAILABLE
+
+# Auto-enable GPU optimizations based on detected hardware
+USE_LIGHTWEIGHT_MODELS = _SYSTEM_MEMORY < 16.0  # Use lite models on <16GB RAM systems
+ENABLE_PADDLEOCR = _SYSTEM_MEMORY >= 8.0  # Disable PaddleOCR on very low memory systems
 
 # Image processing settings
 DPI_PRIMARY       = 300   # Primary DPI for PDF conversion
