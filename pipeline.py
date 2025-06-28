@@ -857,6 +857,15 @@ def _datalab_ocr(image) -> OcrResult:
         
         # Submit initial request
         response = requests.post(url, files=files, headers=headers)
+        
+        # Handle authentication failures gracefully
+        if response.status_code == 403:
+            LOGGER.warning("Datalab API authentication failed (403) - check API key")
+            return OcrResult("", [], [], "datalab")
+        elif response.status_code == 401:
+            LOGGER.warning("Datalab API unauthorized (401) - invalid API key")
+            return OcrResult("", [], [], "datalab")
+        
         response.raise_for_status()
         
         initial_data = response.json()
@@ -1149,8 +1158,7 @@ def _paddleocr_ocr(image) -> OcrResult:
             
             _paddleocr_ocr.reader = PaddleOCR(
                 lang=OCR_LANG if OCR_LANG else PADDLEOCR_LANG,
-                use_gpu=False,
-                use_angle_cls=False,
+                use_angle_cls=True,
                 show_log=False,
                 enable_mkldnn=False,
                 cpu_threads=1,
@@ -1399,6 +1407,18 @@ def gemini_flash_fallback(image_path: Path) -> Dict[str, int]:
         }
 
         resp = requests.post(url, json=payload, headers={'Content-Type': 'application/json'})
+        
+        # Handle authentication failures gracefully
+        if resp.status_code == 400:
+            LOGGER.warning("Gemini API bad request (400) - check API key or request format")
+            return {}
+        elif resp.status_code == 401:
+            LOGGER.warning("Gemini API unauthorized (401) - invalid API key")
+            return {}
+        elif resp.status_code == 403:
+            LOGGER.warning("Gemini API forbidden (403) - check API key permissions")
+            return {}
+        
         resp.raise_for_status()
         
         result = resp.json()
@@ -1862,7 +1882,7 @@ CARBON_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)e|co(?:2|\u2082)e|coze|C0Ze|C02e)
 CARBON_ALT_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C0Ze?|C02e?).*?([\dl\s,g]{1,6})(?=\s|$|kg)", re.I | re.DOTALL)
 # Simple pattern to find carbon footprint value - look for 3-digit number after "0.00" following Kg CO2e variants
 CARBON_SIMPLE_RE = re.compile(r"Kg\s*(?:CO(?:2|\u2082)?e?|co(?:2|\u2082)?e?|coze?|C0Ze?).*?0\.00\s+(\d{3})", re.I | re.DOTALL)
-CARBON_EMISSIONS_RE = re.compile(r"Carbon\s+emissions\s+in\s+Kg\s+CO2e.*?(\d{2,4})", re.I | re.DOTALL)
+CARBON_EMISSIONS_RE = re.compile(r"Carbon\s+emissions.*?Kg\s+CO2e.*?(\d{2,4})", re.I | re.DOTALL)
 # PaddleOCR-specific pattern for DEWA bill format: "AED 120 0 kWh O The CarbomFootprint"
 CARBON_PADDLEOCR_RE = re.compile(r"AED\s+(\d{2,4})\s+0\s+kWh\s+O?\s+The\s+Carbo[mn]", re.I)
 # EasyOCR/PaddleOCR pattern - match 120 when carbon/footprint context exists nearby
@@ -2195,6 +2215,7 @@ def _extract_with_simple_regex_and_confidence(text: str, ocr_result: OcrResult =
         re.compile(r"CO2e?\s+(\d{1,4})", re.I),  # "CO2e 120"
         re.compile(r"Carbon[^0-9]*(\d{1,4})", re.I),  # "Carbon: 120"
         re.compile(r"footprint[^0-9]*(\d{1,4})", re.I),  # "footprint 200"
+        re.compile(r"emissions.*?CO2e.*?(\d{1,4})", re.I),  # "emissions in Kg CO2e levels 150"
         re.compile(r"(\d{1,4})\s*kg(?!\s*CO2)", re.I),  # "200 kg" (not followed by CO2)
     ]
     
@@ -2338,6 +2359,7 @@ def _extract_with_simple_regex(text: str) -> Dict[str, int]:
         re.compile(r"CO2e?\s+(\d{1,4})", re.I),  # "CO2e 120"
         re.compile(r"Carbon[^0-9]*(\d{1,4})", re.I),  # "Carbon: 120"
         re.compile(r"footprint[^0-9]*(\d{1,4})", re.I),  # "footprint 200"
+        re.compile(r"emissions.*?CO2e.*?(\d{1,4})", re.I),  # "emissions in Kg CO2e levels 150"
         re.compile(r"(\d{1,4})\s*kg(?!\s*CO2)", re.I),  # "200 kg" (not followed by CO2)
     ]
     
