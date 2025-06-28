@@ -12,9 +12,11 @@ import sys
 import hashlib
 import base64
 import os
+import concurrent.futures
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 import types
 
 try:
@@ -79,6 +81,49 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 LOGGER = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
+# Image caching and OCR helpers
+# -----------------------------------------------------------------------------
+
+class ImageCache:
+    """Thread-safe cache for page bitmaps to avoid repeated PDF/Image loading."""
+    
+    def __init__(self):
+        self._cache = {}
+        self._lock = threading.Lock()
+    
+    def get_cache_key(self, file_path: Path, dpi: int, page_num: int = 0) -> str:
+        """Generate cache key for image."""
+        file_hash = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
+        return f"{file_hash}_{dpi}_{page_num}"
+    
+    def get_images(self, file_path: Path, dpi: int, is_image: bool = False) -> List:
+        """Get cached images or load and cache them."""
+        with self._lock:
+            if is_image:
+                cache_key = self.get_cache_key(file_path, dpi, 0)
+                if cache_key not in self._cache:
+                    self._cache[cache_key] = [load_image(file_path)]
+                return self._cache[cache_key]
+            else:
+                # For PDFs, cache each page separately
+                images = []
+                pdf_images = pdf_to_images(file_path, dpi)
+                for i, img in enumerate(pdf_images):
+                    cache_key = self.get_cache_key(file_path, dpi, i)
+                    if cache_key not in self._cache:
+                        self._cache[cache_key] = img
+                    images.append(self._cache[cache_key])
+                return images
+    
+    def clear(self):
+        """Clear the cache."""
+        with self._lock:
+            self._cache.clear()
+
+# Global image cache instance
+_image_cache = ImageCache()
+
+# -----------------------------------------------------------------------------
 # OCR helpers
 # -----------------------------------------------------------------------------
 @dataclass
@@ -86,13 +131,40 @@ class OcrResult:
     text: str
     tokens: List[str]
     confidences: List[float]
-
+    engine: str = ""
+    
     @property
     def field_confidence(self) -> float:
         if not self.confidences:
             return 0.0
-        product = math.prod([max(c, 1e-3) for c in self.confidences])
-        return product ** (1 / len(self.confidences))
+        # Use robust geometric mean with top-k filtering for long documents
+        return self._geometric_mean_confidence()
+    
+    def _geometric_mean_confidence(self, top_k_ratio: float = 0.8) -> float:
+        """Calculate geometric mean using top-k confidence scores to avoid penalty from long documents."""
+        if not self.confidences:
+            return 0.0
+        
+        # Apply minimum threshold to prevent zero multiplication
+        valid_confidences = [max(c, 1e-3) for c in self.confidences]
+        
+        # For long documents, use top-k percentile to avoid unfair penalty
+        if len(valid_confidences) > 20:  # threshold for "long document"
+            k = max(5, int(len(valid_confidences) * top_k_ratio))
+            valid_confidences = sorted(valid_confidences, reverse=True)[:k]
+        
+        # Geometric mean
+        product = math.prod(valid_confidences)
+        return product ** (1 / len(valid_confidences))
+    
+    def _logarithmic_confidence(self) -> float:
+        """Alternative logarithmic aggregation method."""
+        if not self.confidences:
+            return 0.0
+        
+        valid_confidences = [max(c, 1e-6) for c in self.confidences]
+        log_sum = sum(math.log(c) for c in valid_confidences)
+        return math.exp(log_sum / len(valid_confidences))
 
 def _auto_rotate(img):
     """Rotate image according to Tesseract's OSD output."""
@@ -596,80 +668,194 @@ def gemini_flash_fallback(image_path: Path) -> Dict[str, int]:
         LOGGER.warning("Gemini Flash fallback failed: %s", exc)
         return {}
 
+def _run_single_engine_with_cache(args: Tuple[Path, str, bool, int]) -> Tuple[str, OcrResult]:
+    """Run a single OCR engine with cached images."""
+    file_path, engine, is_image, dpi = args
+    
+    try:
+        # Use cached images
+        images = _image_cache.get_images(file_path, dpi, is_image)
+        
+        if engine == "tesseract":
+            if is_image:
+                result = _tesseract_ocr(images[0])
+            else:
+                joined, tok, conf = "", [], []
+                for img in images:
+                    res = _tesseract_ocr(img)
+                    joined += res.text + "\n"
+                    tok.extend(res.tokens)
+                    conf.extend(res.confidences)
+                result = OcrResult(joined, tok, conf, engine)
+        elif engine == "easyocr":
+            if is_image:
+                result = _easyocr_ocr(images[0])
+            else:
+                joined, tok, conf = "", [], []
+                for img in images:
+                    res = _easyocr_ocr(img)
+                    joined += res.text + "\n"
+                    tok.extend(res.tokens)
+                    conf.extend(res.confidences)
+                result = OcrResult(joined, tok, conf, engine)
+        elif engine == "paddleocr" and ENABLE_PADDLEOCR:
+            if is_image:
+                result = _paddleocr_ocr(images[0])
+            else:
+                joined, tok, conf = "", [], []
+                for img in images:
+                    res = _paddleocr_ocr(img)
+                    joined += res.text + "\n"
+                    tok.extend(res.tokens)
+                    conf.extend(res.confidences)
+                result = OcrResult(joined, tok, conf, engine)
+        elif engine == "mistral":
+            result = _mistral_ocr(file_path)
+            result.engine = engine
+        elif engine == "gemma_vlm":
+            result = _gemma_vlm_ocr(file_path)
+            result.engine = engine
+        else:
+            # Skip unsupported engines
+            return engine, OcrResult("", [], [], engine)
+            
+        return engine, result
+    except Exception as exc:
+        LOGGER.warning("%s OCR failed: %s", engine, exc)
+        return engine, OcrResult("", [], [], engine)
+
+def _aggregate_multi_engine_results(results: List[Tuple[str, OcrResult]]) -> OcrResult:
+    """Aggregate results from multiple OCR engines using confidence-weighted approach."""
+    valid_results = [(engine, result) for engine, result in results 
+                     if result.text.strip() and result.confidences]
+    
+    if not valid_results:
+        return OcrResult("", [], [], "none")
+    
+    # Sort by confidence and select best result
+    valid_results.sort(key=lambda x: x[1].field_confidence, reverse=True)
+    best_engine, best_result = valid_results[0]
+    
+    # For highly confident results, return immediately
+    if best_result.field_confidence >= TAU_FIELD_ACCEPT:
+        LOGGER.info("Best engine %s with confidence %.2f", best_engine, best_result.field_confidence)
+        return best_result
+    
+    # For moderate confidence, consider ensemble if multiple engines agree
+    if len(valid_results) > 1 and best_result.field_confidence >= TAU_ENHANCER_PASS:
+        # Simple ensemble: if top 2 engines have similar confidence, use the better one
+        second_best = valid_results[1][1]
+        if abs(best_result.field_confidence - second_best.field_confidence) < 0.1:
+            LOGGER.info("Ensemble agreement between %s (%.2f) and %s (%.2f)", 
+                       best_engine, best_result.field_confidence,
+                       valid_results[1][0], second_best.field_confidence)
+    
+    return best_result
+
 def run_ocr(file_path: Path) -> OcrResult:
-    """Hierarchical OCR cascade: tesseract → easyOCR → paddleOCR → mistralOCR → Gemma VLM → Gemini Flash."""
+    """Parallel OCR with hierarchical fallback: OCR engines in parallel → VLM fallback → Gemini Flash."""
     # Check if file is an image
     is_image = file_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']
     
+    # First try digital text extraction for PDFs
     if not is_image and extract_text:
         try:
             LOGGER.info("Running pdfminer (digital text pass)…")
             text = extract_text(str(file_path))
             if text and text.strip():
-                return OcrResult(text=text, tokens=text.split(), confidences=[1.0] * len(text.split()))
+                return OcrResult(text=text, tokens=text.split(), confidences=[1.0] * len(text.split()), engine="pdfminer")
         except Exception as exc:
             LOGGER.warning("pdfminer failed: %s", exc)
 
-    # Hierarchical OCR approach - ordered by priority
-    engines = ["tesseract", "easyocr", "paddleocr", "mistral", "gemma_vlm"]
+    # Parallel OCR with traditional engines
+    traditional_engines = ["tesseract", "easyocr"]
+    if ENABLE_PADDLEOCR:
+        traditional_engines.append("paddleocr")
     
-    for engine in engines:
+    LOGGER.info("Running parallel OCR with engines: %s", traditional_engines)
+    
+    # Prepare arguments for parallel execution
+    engine_args = [(file_path, engine, is_image, DPI_PRIMARY) for engine in traditional_engines]
+    
+    # Run traditional OCR engines in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(traditional_engines)) as executor:
+        futures = [executor.submit(_run_single_engine_with_cache, args) for args in engine_args]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+    
+    # Aggregate results from parallel engines
+    best_result = _aggregate_multi_engine_results(results)
+    
+    # If we have high confidence, return immediately
+    if best_result.field_confidence >= TAU_FIELD_ACCEPT:
+        LOGGER.info("Parallel OCR succeeded with confidence %.2f", best_result.field_confidence)
+        return best_result
+    
+    # Try enhanced DPI for the best performing engine if confidence is moderate
+    if (best_result.field_confidence >= TAU_ENHANCER_PASS and 
+        not is_image and best_result.engine in traditional_engines):
         try:
-            LOGGER.info("Running %s OCR engine…", engine)
-            if is_image:
-                result = _run_ocr_engine(file_path, is_image=True, engine=engine)
-            else:
-                result = _run_ocr_engine(file_path, dpi=DPI_PRIMARY, engine=engine)
-            
-            # Check if confidence is acceptable
-            if result.field_confidence >= TAU_FIELD_ACCEPT:
-                LOGGER.info("%s OCR accepted with confidence %.2f", engine, result.field_confidence)
-                return result
-            elif result.field_confidence >= TAU_ENHANCER_PASS:
-                LOGGER.info("%s OCR acceptable with confidence %.2f", engine, result.field_confidence)
-                # For non-image files, try enhanced DPI
-                if not is_image:
-                    try:
-                        LOGGER.info("Enhancement triggered – running %s at %d dpi…", engine, DPI_ENHANCED)
-                        enhanced = _run_ocr_engine(file_path, dpi=DPI_ENHANCED, engine=engine)
-                        if enhanced.field_confidence >= TAU_FIELD_ACCEPT:
-                            LOGGER.info("%s enhanced OCR accepted with confidence %.2f", engine, enhanced.field_confidence)
-                            return enhanced
-                        # If enhanced is better, use it
-                        if enhanced.field_confidence > result.field_confidence:
-                            result = enhanced
-                    except Exception as exc:
-                        LOGGER.warning("%s enhanced OCR failed: %s", engine, exc)
-                
-                # If confidence meets threshold, return this result
-                if result.field_confidence >= TAU_ENHANCER_PASS:
-                    return result
-            else:
-                LOGGER.info("%s OCR confidence too low (%.2f), trying next engine", engine, result.field_confidence)
-                
+            LOGGER.info("Enhancement triggered – running %s at %d dpi…", best_result.engine, DPI_ENHANCED)
+            enhanced_args = (file_path, best_result.engine, is_image, DPI_ENHANCED)
+            _, enhanced_result = _run_single_engine_with_cache(enhanced_args)
+            if enhanced_result.field_confidence >= TAU_FIELD_ACCEPT:
+                LOGGER.info("Enhanced OCR accepted with confidence %.2f", enhanced_result.field_confidence)
+                return enhanced_result
+            elif enhanced_result.field_confidence > best_result.field_confidence:
+                best_result = enhanced_result
         except Exception as exc:
-            LOGGER.warning("%s OCR failed: %s", engine, exc)
-            continue
+            LOGGER.warning("Enhanced OCR failed: %s", exc)
+    
+    # If traditional engines didn't work well, try VLM engines concurrently
+    if best_result.field_confidence < TAU_LLM_PASS:
+        LOGGER.info("Traditional OCR confidence too low (%.2f), trying VLM engines", best_result.field_confidence)
+        
+        vlm_engines = ["mistral", "gemma_vlm"]
+        vlm_args = [(file_path, engine, is_image, DPI_PRIMARY) for engine in vlm_engines]
+        
+        # Run VLM engines in parallel with a timeout
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                vlm_futures = [executor.submit(_run_single_engine_with_cache, args) for args in vlm_args]
+                vlm_results = []
+                for future in concurrent.futures.as_completed(vlm_futures, timeout=30):
+                    vlm_results.append(future.result())
+                
+                # Check if any VLM result is better
+                vlm_best = _aggregate_multi_engine_results(vlm_results)
+                if vlm_best.field_confidence > best_result.field_confidence:
+                    best_result = vlm_best
+                    
+        except concurrent.futures.TimeoutError:
+            LOGGER.warning("VLM engines timed out")
+        except Exception as exc:
+            LOGGER.warning("VLM engines failed: %s", exc)
     
     # If all engines failed or have low confidence, try Gemini Flash fallback
-    LOGGER.warning("All OCR engines completed with low confidence, trying Gemini Flash fallback")
-    try:
-        llm_fields = gemini_flash_fallback(file_path)
-        if llm_fields:
-            text_parts = []
-            if "electricity_kwh" in llm_fields:
-                text_parts.append(f"Electricity {llm_fields['electricity_kwh']} kWh")
-            if "carbon_kgco2e" in llm_fields:
-                text_parts.append(f"Carbon {llm_fields['carbon_kgco2e']} kg")
-            llm_text = " ".join(text_parts)
-            LOGGER.info("Gemini Flash fallback successful")
-            return OcrResult(text=llm_text, tokens=text_parts, confidences=[1.0] * len(text_parts))
-    except Exception as exc:
-        LOGGER.warning("Gemini Flash fallback failed: %s", exc)
+    if best_result.field_confidence < TAU_LLM_PASS:
+        LOGGER.warning("All OCR engines completed with low confidence (%.2f), trying Gemini Flash fallback", 
+                       best_result.field_confidence)
+        try:
+            llm_fields = gemini_flash_fallback(file_path)
+            if llm_fields:
+                text_parts = []
+                if "electricity_kwh" in llm_fields:
+                    text_parts.append(f"Electricity {llm_fields['electricity_kwh']} kWh")
+                if "carbon_kgco2e" in llm_fields:
+                    text_parts.append(f"Carbon {llm_fields['carbon_kgco2e']} kg")
+                llm_text = " ".join(text_parts)
+                LOGGER.info("Gemini Flash fallback successful")
+                return OcrResult(text=llm_text, tokens=text_parts, confidences=[1.0] * len(text_parts), engine="gemini_flash")
+        except Exception as exc:
+            LOGGER.warning("Gemini Flash fallback failed: %s", exc)
     
-    # Return best effort result from last attempt
-    LOGGER.warning("All OCR methods failed, returning empty result")
-    return OcrResult("", [], [])
+    # Return best effort result
+    if best_result.text.strip():
+        LOGGER.info("Returning best effort result from %s with confidence %.2f", 
+                   best_result.engine, best_result.field_confidence)
+        return best_result
+    else:
+        LOGGER.warning("All OCR methods failed, returning empty result")
+        return OcrResult("", [], [], "none")
 
 # -----------------------------------------------------------------------------
 # Field extraction
@@ -701,14 +887,54 @@ def _normalise_number(num_txt: str) -> int:
     return int(digits)
 
 
-def extract_fields(text: str) -> Dict[str, int]:
-    """Extracts electricity and carbon values from OCR text."""
+def _validate_extraction_values(electricity: Optional[int], carbon: Optional[int]) -> bool:
+    """Cross-field validation to catch OCR hallucinations."""
+    if electricity is None or carbon is None:
+        return True  # Can't validate incomplete data
+    
+    # Basic correlation check: carbon should be roughly 0.3-0.6 kg per kWh for UAE
+    carbon_per_kwh = carbon / electricity
+    if not (0.1 <= carbon_per_kwh <= 1.0):  # Reasonable bounds for carbon intensity
+        LOGGER.warning("Suspicious carbon/kWh ratio: %.2f (carbon=%d, electricity=%d)", 
+                       carbon_per_kwh, carbon, electricity)
+        return False
+    
+    # Check if values are in realistic ranges
+    if electricity < 50 or electricity > 10000:
+        LOGGER.warning("Electricity value out of typical range: %d kWh", electricity)
+        return False
+    
+    if carbon < 10 or carbon > 5000:
+        LOGGER.warning("Carbon value out of typical range: %d kg", carbon)
+        return False
+    
+    return True
+
+def _extract_with_lightweight_kie(text: str, file_path: Path = None) -> Dict[str, int]:
+    """Fallback extraction using lightweight KIE approach via GPT-4o Vision API."""
+    if not file_path:
+        return {}
+    
+    try:
+        LOGGER.info("Attempting lightweight KIE extraction via Vision API")
+        # Use the existing Gemini Flash fallback as a lightweight KIE model
+        kie_result = gemini_flash_fallback(file_path)
+        if kie_result:
+            LOGGER.info("KIE extraction successful: %s", kie_result)
+            return kie_result
+    except Exception as exc:
+        LOGGER.warning("KIE extraction failed: %s", exc)
+    
+    return {}
+
+def extract_fields(text: str, file_path: Path = None) -> Dict[str, int]:
+    """Enhanced extraction with regex patterns + KIE fallback + validation."""
     out: Dict[str, int] = {}
     
-    # Try patterns in order of specificity - but validate results
+    # Phase 1: Traditional regex-based extraction
     electricity_candidates = []
     
-    # Collect all potential matches
+    # Collect all potential electricity matches
     for pattern_name, pattern in [("ENERGY_FALLBACK", ENERGY_FALLBACK_RE), ("ENERGY_DEWA", ENERGY_DEWA_RE), ("ENERGY_RE", ENERGY_RE)]:
         m = pattern.search(text)
         if m:
@@ -742,6 +968,32 @@ def extract_fields(text: str) -> Dict[str, int]:
             if carbon_value > 10:  # Carbon footprint should be > 10 kg for typical usage
                 out["carbon_kgco2e"] = carbon_value
                 break
+
+    # Phase 2: Validation of extracted values
+    electricity = out.get("electricity_kwh")
+    carbon = out.get("carbon_kgco2e")
+    
+    if not _validate_extraction_values(electricity, carbon):
+        LOGGER.warning("Regex extraction failed validation, attempting KIE fallback")
+        # If validation fails, try KIE approach
+        if file_path:
+            kie_result = _extract_with_lightweight_kie(text, file_path)
+            if kie_result:
+                # Validate KIE results too
+                kie_electricity = kie_result.get("electricity_kwh")
+                kie_carbon = kie_result.get("carbon_kgco2e")
+                if _validate_extraction_values(kie_electricity, kie_carbon):
+                    LOGGER.info("KIE extraction passed validation, using KIE results")
+                    out.update(kie_result)
+                else:
+                    LOGGER.warning("KIE extraction also failed validation")
+    
+    # Phase 3: Final sanity check and fallback
+    if not out and file_path:
+        LOGGER.warning("No valid extraction from regex, trying KIE as last resort")
+        kie_result = _extract_with_lightweight_kie(text, file_path)
+        if kie_result:
+            out.update(kie_result)
 
     return out
 # -----------------------------------------------------------------------------
@@ -801,7 +1053,7 @@ def main() -> None:
         sys.exit(1)
 
     ocr_res = run_ocr(file_path)
-    fields = extract_fields(ocr_res.text)
+    fields = extract_fields(ocr_res.text, file_path)
     fields["_confidence"] = ocr_res.field_confidence
 
     payload = build_payload(fields, file_path)
