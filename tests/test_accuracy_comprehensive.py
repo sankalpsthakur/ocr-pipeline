@@ -214,6 +214,39 @@ class TestRealWorldAccuracy:
             if expected_carbon:
                 assert result.get("carbon_kgco2e") == expected_carbon, \
                     f"Noisy OCR failed for carbon: {text}"
+    
+    def test_ocr_variant_accuracy(self):
+        """Test extraction of OCR error variants."""
+        
+        ocr_variants = [
+            # OCR character substitution errors
+            ('Carbon footprint: Kg coze 120', 120),  # coze -> CO2e
+            ('kg co2e 250', 250),  # case variations
+            ('Kg  CO2e   180', 180),  # extra spaces
+            ('Carbon emissions in Kg CO2e levels 150', 150),  # embedded context
+            
+            # Complex DEWA patterns
+            ('Kg C0Ze kwh 000 0.00 120 kWh 000 0.00', 120),  # C0Ze variant
+        ]
+        
+        for text, expected_carbon in ocr_variants:
+            result = pipeline.extract_fields(text)
+            assert result.get("carbon_kgco2e") == expected_carbon, \
+                f"OCR variant failed for: {text}"
+    
+    def test_edge_case_filtering(self):
+        """Test that invalid values are properly filtered."""
+        
+        invalid_cases = [
+            'Kg CO2e 5',  # Too low, should be filtered
+            'Kg coze 0',  # Zero value
+            'Carbon but no number',  # No valid number
+            'Electricity: 299 kWh but no carbon data',  # No carbon mention
+        ]
+        
+        for text in invalid_cases:
+            result = pipeline.extract_fields(text)
+            assert 'carbon_kgco2e' not in result, f"Should filter invalid case: {text}"
 
 
 if __name__ == "__main__":
