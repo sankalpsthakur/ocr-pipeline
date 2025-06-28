@@ -217,7 +217,7 @@ override both engines with a single value.
 | Step | What the code does | When it moves on |
 |------|-------------------|------------------|
 | **Pre-flight** | • If file is PDF it first calls `extract_text()` (pdfminer). | No text or empty string. |
-| **Engine loop** | Iterates through the list `["tesseract", "easyocr", "paddleocr", "mistral", "gemma_vlm"]`. Each engine is run via `_run_ocr_engine()`. | If `field_confidence < TAU_FIELD_ACCEPT` (strict) and `< TAU_ENHANCER_PASS` after any DPI boost, the loop continues. |
+| **Engine loop** | Iterates through the list `["tesseract", "easyocr", "paddleocr", "mistral", "datalab", "gemma_vlm", "gemini_flash"]`. Each engine is run via `_run_ocr_engine()`. | If `field_confidence < TAU_FIELD_ACCEPT` (strict) and `< TAU_ENHANCER_PASS` after any DPI boost, the loop continues. |
 | **DPI enhancement** | For PDF pages whose first pass is mediocre (`>= TAU_ENHANCER_PASS` but `< TAU_FIELD_ACCEPT`), the same engine is rerun at `DPI_ENHANCED` (typically 600 dpi vs. 300 dpi). | Enhanced confidence still too low. |
 | **Accept / return** | As soon as an engine's geometric-mean confidence `field_confidence ≥ TAU_FIELD_ACCEPT`, that result is returned. | n/a |
 | **LLM fallback** | If every engine is rejected, `gemini_flash_fallback()` asks Gemini 2.0 Flash to pull the electricity kWh and carbon kgCO₂e directly from the raw image/PDF. | Only if even this fails does the pipeline return an empty payload. |
