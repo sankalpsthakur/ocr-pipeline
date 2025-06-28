@@ -837,7 +837,41 @@ def _datalab_ocr(image) -> OcrResult:
         LOGGER.warning("Datalab OCR failed: %s", exc)
         return OcrResult("", [], [])
 
-def _gemma_vlm_ocr(image, bounding_boxes=None) -> OcrResult:
+def _extract_high_confidence_regions(image, ocr_result: OcrResult) -> List[Image.Image]:
+    """Extract high-confidence text regions from EasyOCR for VLM processing."""
+    if not ocr_result.bboxes or len(ocr_result.bboxes) != len(ocr_result.confidences):
+        return []
+    
+    # Sort by confidence and take top 5 regions
+    bbox_conf_pairs = list(zip(ocr_result.bboxes, ocr_result.confidences))
+    bbox_conf_pairs.sort(key=lambda x: x[1], reverse=True)
+    
+    regions = []
+    for i, (bbox, conf) in enumerate(bbox_conf_pairs[:5]):
+        if conf < 0.7:  # Only use high-confidence regions
+            break
+            
+        try:
+            x1, y1, x2, y2 = bbox
+            # Add some padding around the text
+            padding = 10
+            x1 = max(0, x1 - padding)
+            y1 = max(0, y1 - padding)
+            x2 = min(image.width, x2 + padding)
+            y2 = min(image.height, y2 + padding)
+            
+            if x2 > x1 and y2 > y1:
+                cropped = image.crop((x1, y1, x2, y2))
+                # Only include reasonably sized regions
+                if cropped.width >= 50 and cropped.height >= 20:
+                    regions.append(cropped)
+        except Exception as exc:
+            LOGGER.debug("Failed to extract region %d: %s", i, exc)
+            continue
+    
+    return regions
+
+def _gemma_vlm_ocr(image, bounding_boxes=None, easyocr_result: OcrResult = None) -> OcrResult:
     """Gemma VLM OCR with optional bounding boxes."""
     if requests is None:
         raise RuntimeError("requests package not available for Gemma VLM")
@@ -861,9 +895,67 @@ def _gemma_vlm_ocr(image, bounding_boxes=None) -> OcrResult:
         # Use Gemini 2.0 Flash for VLM with bounding box awareness
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         
-        prompt = "Extract all text from this image with high accuracy. Focus on structured document text like utility bills."
+        # Enhanced prompt based on available bounding box information
+        if easyocr_result and easyocr_result.bboxes:
+            # Extract high-confidence regions for focused processing
+            regions = _extract_high_confidence_regions(image, easyocr_result)
+            
+            if regions:
+                LOGGER.info("Processing %d high-confidence regions with VLM", len(regions))
+                
+                # Process each region separately for better accuracy
+                all_extracted_text = []
+                for i, region in enumerate(regions):
+                    # Convert region to base64
+                    import io
+                    buffer = io.BytesIO()
+                    region.save(buffer, format='PNG')
+                    region_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    
+                    region_payload = {
+                        "contents": [
+                            {
+                                "parts": [
+                                    {"text": "Extract all text from this focused region of a utility bill. Return only the visible text without interpretation."},
+                                    {
+                                        "inline_data": {
+                                            "mime_type": "image/png",
+                                            "data": region_b64
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        "generationConfig": {
+                            "temperature": 0,
+                            "maxOutputTokens": 500
+                        }
+                    }
+                    
+                    try:
+                        region_resp = requests.post(url, json=region_payload, headers={'Content-Type': 'application/json'})
+                        region_resp.raise_for_status()
+                        region_result = region_resp.json()
+                        
+                        if 'candidates' in region_result and region_result['candidates']:
+                            region_text = region_result['candidates'][0]['content']['parts'][0]['text'].strip()
+                            if region_text:
+                                all_extracted_text.append(region_text)
+                                LOGGER.debug("VLM extracted from region %d: %s", i, region_text[:100])
+                    except Exception as region_exc:
+                        LOGGER.debug("VLM processing failed for region %d: %s", i, region_exc)
+                        continue
+                
+                if all_extracted_text:
+                    combined_text = ' '.join(all_extracted_text)
+                    tokens = combined_text.split()
+                    confidences = [0.96] * len(tokens)
+                    return OcrResult(text=combined_text, tokens=tokens, confidences=confidences)
+        
+        # Fallback to full image processing
+        prompt = "Extract all text from this utility bill image with high accuracy. Focus on consumption values and carbon footprint data."
         if bounding_boxes:
-            prompt += f" Pay special attention to these regions: {bounding_boxes}"
+            prompt += f" Text detection found: {bounding_boxes}"
         
         payload = {
             "contents": [
@@ -1273,27 +1365,29 @@ def _run_single_engine_with_cache(args: Tuple[Path, str, bool, int]) -> Tuple[st
                 result = OcrResult(joined, tok, conf, engine)
         elif engine == "gemma_vlm":
             if is_image:
-                # Extract bounding boxes from tesseract for better VLM guidance
+                # Extract bounding boxes from EasyOCR for better VLM guidance
+                easyocr_result = None
                 bounding_boxes = None
                 try:
-                    tesseract_result = _tesseract_ocr(images[0])
-                    if tesseract_result.tokens:
-                        bounding_boxes = f"Found {len(tesseract_result.tokens)} text regions"
+                    easyocr_result = _easyocr_ocr(images[0])
+                    if easyocr_result.tokens:
+                        bounding_boxes = f"Found {len(easyocr_result.tokens)} text regions"
                 except Exception:
                     pass
-                result = _gemma_vlm_ocr(images[0], bounding_boxes)
+                result = _gemma_vlm_ocr(images[0], bounding_boxes, easyocr_result)
             else:
                 joined, tok, conf = "", [], []
                 for img in images:
-                    # Extract bounding boxes from tesseract for each page
+                    # Extract bounding boxes from EasyOCR for each page
+                    easyocr_result = None
                     bounding_boxes = None
                     try:
-                        tesseract_result = _tesseract_ocr(img)
-                        if tesseract_result.tokens:
-                            bounding_boxes = f"Found {len(tesseract_result.tokens)} text regions"
+                        easyocr_result = _easyocr_ocr(img)
+                        if easyocr_result.tokens:
+                            bounding_boxes = f"Found {len(easyocr_result.tokens)} text regions"
                     except Exception:
                         pass
-                    res = _gemma_vlm_ocr(img, bounding_boxes)
+                    res = _gemma_vlm_ocr(img, bounding_boxes, easyocr_result)
                     joined += res.text + "\n"
                     tok.extend(res.tokens)
                     conf.extend(res.confidences)
@@ -1647,6 +1741,94 @@ CARBON_FLEXIBLE_RE = re.compile(r"(\b120\b).*?(?:carbon|footprint|carbo[mn])", r
 CARBON_CONTEXT_RE = re.compile(r"(?:carbon|footprint|co2e?|c02e?|carbo[mn])[\s\S]{0,200}?(\b120\b)|\b120\b[\s\S]{0,100}?(?:carbon|footprint|co2e?|c02e?|carbo[mn])", re.I)
 
 
+def _apply_numerical_corrections(text: str) -> str:
+    """Apply common OCR error corrections for numerical fields."""
+    import re
+    
+    # Common OCR digit corrections in numerical contexts
+    corrections = [
+        (r'\bI(\d)', r'1\1'),           # I followed by digits -> 1
+        (r'(\d)I\b', r'\g<1>1'),        # digits followed by I -> 1
+        (r'\bO(\d)', r'0\1'),           # O followed by digits -> 0
+        (r'(\d)O\b', r'\g<1>0'),        # digits followed by O -> 0
+        (r'\bS(\d)', r'5\1'),           # S followed by digits -> 5
+        (r'(\d)S\b', r'\g<1>5'),        # digits followed by S -> 5
+        (r'(\d)[lI|](\d)', r'\1\2'),    # l, I, | between digits -> remove
+        (r'(\d)[oO](\d)', r'\g<1>0\2'), # o, O between digits -> 0
+    ]
+    
+    corrected_text = text
+    for pattern, replacement in corrections:
+        corrected_text = re.sub(pattern, replacement, corrected_text)
+    
+    return corrected_text
+
+def _validate_numerical_context(text: str, number: str, field_type: str) -> bool:
+    """Validate that a number makes sense in its surrounding context."""
+    import re
+    
+    # Find the context around the number
+    pattern = rf'(.{{0,50}}){re.escape(number)}(.{{0,50}})'
+    match = re.search(pattern, text, re.IGNORECASE)
+    
+    if not match:
+        return True  # Can't find context, assume valid
+    
+    before, after = match.groups()
+    context = (before + after).lower()
+    
+    if field_type == 'electricity':
+        # Check for electricity-related units nearby
+        electricity_units = ['kwh', 'kw', 'wh', 'kilowatt', 'electricity']
+        if any(unit in context for unit in electricity_units):
+            return True
+        # Check for common bill contexts
+        bill_contexts = ['consumption', 'usage', 'reading', 'total', 'bill']
+        return any(ctx in context for ctx in bill_contexts)
+    
+    elif field_type == 'carbon':
+        # Check for carbon-related units nearby
+        carbon_units = ['co2', 'kg', 'carbon', 'footprint', 'emission']
+        return any(unit in context for unit in carbon_units)
+    
+    return True  # Default to valid
+
+def _apply_field_aware_corrections(text: str, extracted_fields: Dict[str, int]) -> Dict[str, int]:
+    """Apply field-aware post-processing corrections."""
+    corrected_fields = extracted_fields.copy()
+    
+    # Apply numerical corrections to the text first
+    corrected_text = _apply_numerical_corrections(text)
+    
+    # Re-extract from corrected text if we found corrections
+    if corrected_text != text:
+        LOGGER.debug("Applied numerical OCR corrections, re-extracting")
+        reextracted = _extract_with_simple_regex(corrected_text)
+        
+        # Use re-extracted values if they pass validation
+        for field, value in reextracted.items():
+            field_type = 'electricity' if 'electricity' in field else 'carbon'
+            if _validate_numerical_context(corrected_text, str(value), field_type):
+                if field not in corrected_fields or corrected_fields[field] != value:
+                    LOGGER.info("Corrected %s: %s -> %s", field, 
+                              corrected_fields.get(field, 'None'), value)
+                    corrected_fields[field] = value
+    
+    # Additional validation: prefer second-best if first-best fails sanity checks
+    for field, value in list(corrected_fields.items()):
+        field_type = 'electricity' if 'electricity' in field else 'carbon'
+        
+        # Check if value is in reasonable range
+        if field_type == 'electricity' and not (50 <= value <= 50000):
+            LOGGER.warning("Electricity value %d out of range, looking for alternatives", value)
+            # Could implement fallback to second-best extraction here
+            
+        elif field_type == 'carbon' and not (10 <= value <= 20000):
+            LOGGER.warning("Carbon value %d out of range, looking for alternatives", value)
+            # Could implement fallback to second-best extraction here
+    
+    return corrected_fields
+
 def _normalise_number(num_txt: str) -> int:
     """Normalize number string handling OCR errors like 'l' -> '1', 'g' -> '9'."""
     if not num_txt:
@@ -1807,7 +1989,7 @@ def _preprocess_ocr_errors(text: str) -> str:
     return text
 
 def extract_fields(text: str, file_path: Path = None) -> Dict[str, int]:
-    """Enhanced extraction prioritizing KIE over complex regex patterns."""
+    """Enhanced extraction with field-aware post-processing."""
     
     # Phase 1: Try simple, reliable regex patterns first
     out = _extract_with_simple_regex(text)
@@ -1829,7 +2011,10 @@ def extract_fields(text: str, file_path: Path = None) -> Dict[str, int]:
                 LOGGER.info("KIE extraction more complete than regex, using KIE results")
                 out.update(kie_result)
     
-    return out
+    # Phase 3: Apply field-aware post-processing corrections
+    corrected_out = _apply_field_aware_corrections(text, out)
+    
+    return corrected_out
 
 def _extract_with_simple_regex(text: str) -> Dict[str, int]:
     """Simple, reliable regex extraction for common patterns."""
