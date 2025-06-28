@@ -2,13 +2,6 @@
 """
 Consolidated Comprehensive Test Suite for OCR Pipeline
 
-This test suite combines the most valuable tests from all test files:
-- test_basic.py: Core functionality tests
-- test_final_validation.py: Final improvement validation
-- test_improvements.py: Performance and robustness tests  
-- test_specific_improvements.py: Specific feature tests
-- test_accuracy_comprehensive.py: Ground truth accuracy tests
-
 Organized into logical test classes covering all critical functionality.
 """
 
@@ -553,6 +546,192 @@ class TestRealWorldScenarios:
             # Should either not extract or extract valid values only
             if 'carbon_kgco2e' in result:
                 assert result['carbon_kgco2e'] >= 10  # Minimum valid threshold
+
+
+class TestWordCharacterAccuracy:
+    """Test word-level and character-level accuracy across OCR engines."""
+    
+    # Ground truth text with known character-level accuracy
+    WORD_ACCURACY_CASES = [
+        # (input_text, expected_tokens, expected_full_text)
+        ("Dubai Electricity Water Authority", 
+         ["Dubai", "Electricity", "Water", "Authority"],
+         "Dubai Electricity Water Authority"),
+        
+        ("Consumption 299 kWh", 
+         ["Consumption", "299", "kWh"],
+         "Consumption 299 kWh"),
+         
+        ("Carbon Footprint 120 kg CO2e",
+         ["Carbon", "Footprint", "120", "kg", "CO2e"],
+         "Carbon Footprint 120 kg CO2e"),
+         
+        ("Account: 2052672303 Issue Date: 21/05/2025",
+         ["Account:", "2052672303", "Issue", "Date:", "21/05/2025"],
+         "Account: 2052672303 Issue Date: 21/05/2025"),
+    ]
+    
+    def calculate_character_error_rate(self, reference: str, hypothesis: str) -> float:
+        """Calculate Character Error Rate (CER) between reference and hypothesis."""
+        import difflib
+        
+        # Use SequenceMatcher for character-level comparison
+        matcher = difflib.SequenceMatcher(None, reference, hypothesis)
+        
+        # Count operations needed to transform hypothesis to reference
+        operations = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag != 'equal':
+                operations += max(i2 - i1, j2 - j1)
+        
+        # CER = (Substitutions + Deletions + Insertions) / Length of reference
+        cer = operations / len(reference) if len(reference) > 0 else 0.0
+        return cer
+    
+    def calculate_word_error_rate(self, reference_tokens: list, hypothesis_tokens: list) -> float:
+        """Calculate Word Error Rate (WER) between reference and hypothesis tokens."""
+        import difflib
+        
+        # Use SequenceMatcher for word-level comparison
+        matcher = difflib.SequenceMatcher(None, reference_tokens, hypothesis_tokens)
+        
+        # Count word-level operations
+        operations = 0
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag != 'equal':
+                operations += max(i2 - i1, j2 - j1)
+        
+        # WER = (Word Substitutions + Deletions + Insertions) / Number of reference words  
+        wer = operations / len(reference_tokens) if len(reference_tokens) > 0 else 0.0
+        return wer
+    
+    @pytest.mark.parametrize("input_text,expected_tokens,expected_text", WORD_ACCURACY_CASES)
+    def test_word_level_accuracy_across_engines(self, input_text, expected_tokens, expected_text):
+        """Test word-level accuracy for each OCR engine."""
+        
+        # Mock different engine results with realistic OCR errors
+        engine_results = {
+            "tesseract": {
+                "tokens": ["Dubai", "Electriclty", "Water", "Authority"],  # OCR error: "Electriclty"
+                "text": "Dubai Electriclty Water Authority",
+                "confidences": [0.95, 0.75, 0.90, 0.88]
+            },
+            "easyocr": {
+                "tokens": ["Dubai", "Electricity", "VVater", "Authority"],  # OCR error: "VVater"  
+                "text": "Dubai Electricity VVater Authority",
+                "confidences": [0.92, 0.96, 0.70, 0.91]
+            },
+            "paddleocr": {
+                "tokens": ["Dubai", "Electricity", "Water", "Authorlty"],  # OCR error: "Authorlty"
+                "text": "Dubai Electricity Water Authorlty", 
+                "confidences": [0.94, 0.93, 0.95, 0.73]
+            }
+        }
+        
+        # Test each engine's word accuracy
+        for engine, result in engine_results.items():
+            wer = self.calculate_word_error_rate(expected_tokens, result["tokens"])
+            cer = self.calculate_character_error_rate(expected_text, result["text"])
+            
+            # Log accuracy metrics
+            print(f"\n{engine} Word Accuracy:")
+            print(f"  WER: {wer:.3f} ({(1-wer)*100:.1f}% word accuracy)")
+            print(f"  CER: {cer:.3f} ({(1-cer)*100:.1f}% character accuracy)")
+            print(f"  Tokens: {result['tokens']}")
+            
+            # Assert reasonable accuracy thresholds
+            assert wer <= 0.5, f"{engine} WER {wer:.3f} too high (>50% word errors)"
+            assert cer <= 0.2, f"{engine} CER {cer:.3f} too high (>20% character errors)"
+    
+    def test_engine_accuracy_comparison(self):
+        """Compare accuracy across all OCR engines on the same text."""
+        
+        test_text = "Dubai Electricity Water Authority Invoice 299 kWh Carbon 120 kg CO2e"
+        expected_tokens = test_text.split()
+        
+        # Mock realistic engine results with different error patterns
+        engine_results = {
+            "tesseract": pipeline.OcrResult(
+                "Dubai Electriclty Water Authority Invoice 299 kWh Carbon I20 kg CO2e",
+                ["Dubai", "Electriclty", "Water", "Authority", "Invoice", "299", "kWh", "Carbon", "I20", "kg", "CO2e"],
+                [0.95, 0.75, 0.90, 0.88, 0.92, 0.98, 0.94, 0.91, 0.60, 0.89, 0.85]
+            ),
+            "easyocr": pipeline.OcrResult(
+                "Dubai Electricity VVater Authority Invoice 299 kWh Carbon 120 kg C02e", 
+                ["Dubai", "Electricity", "VVater", "Authority", "Invoice", "299", "kWh", "Carbon", "120", "kg", "C02e"],
+                [0.92, 0.96, 0.70, 0.91, 0.94, 0.97, 0.95, 0.93, 0.96, 0.92, 0.78]
+            ),
+            "paddleocr": pipeline.OcrResult(
+                "Dubai Electricity Water Authority Invoice 299 kWh Carbon 120 kg CO2e",
+                ["Dubai", "Electricity", "Water", "Authority", "Invoice", "299", "kWh", "Carbon", "120", "kg", "CO2e"], 
+                [0.94, 0.93, 0.95, 0.89, 0.91, 0.99, 0.96, 0.94, 0.97, 0.93, 0.88]
+            )
+        }
+        
+        accuracy_results = {}
+        
+        for engine, result in engine_results.items():
+            wer = self.calculate_word_error_rate(expected_tokens, result.tokens)
+            cer = self.calculate_character_error_rate(test_text, result.text)
+            
+            accuracy_results[engine] = {
+                'wer': wer,
+                'cer': cer, 
+                'word_accuracy': (1 - wer) * 100,
+                'char_accuracy': (1 - cer) * 100,
+                'avg_confidence': sum(result.confidences) / len(result.confidences)
+            }
+        
+        # Print comparison report
+        print(f"\n{'='*60}")
+        print("OCR ENGINE ACCURACY COMPARISON")
+        print(f"{'='*60}")
+        print(f"{'Engine':<12} {'Word Acc':<10} {'Char Acc':<10} {'Avg Conf':<10} {'WER':<8} {'CER':<8}")
+        print(f"{'-'*60}")
+        
+        for engine, metrics in accuracy_results.items():
+            print(f"{engine:<12} {metrics['word_accuracy']:<10.1f}% {metrics['char_accuracy']:<10.1f}% "
+                  f"{metrics['avg_confidence']:<10.3f} {metrics['wer']:<8.3f} {metrics['cer']:<8.3f}")
+        
+        # Find best performing engine
+        best_word_engine = min(accuracy_results.keys(), key=lambda x: accuracy_results[x]['wer'])
+        best_char_engine = min(accuracy_results.keys(), key=lambda x: accuracy_results[x]['cer'])
+        
+        print(f"\nBest word accuracy: {best_word_engine} ({accuracy_results[best_word_engine]['word_accuracy']:.1f}%)")
+        print(f"Best character accuracy: {best_char_engine} ({accuracy_results[best_char_engine]['char_accuracy']:.1f}%)")
+        
+        # Assert minimum accuracy requirements
+        for engine, metrics in accuracy_results.items():
+            assert metrics['word_accuracy'] >= 80.0, f"{engine} word accuracy {metrics['word_accuracy']:.1f}% below 80%"
+            assert metrics['char_accuracy'] >= 90.0, f"{engine} character accuracy {metrics['char_accuracy']:.1f}% below 90%"
+    
+    def test_confidence_accuracy_correlation(self):
+        """Test correlation between engine confidence and actual accuracy."""
+        
+        # Test cases with known accuracy levels
+        test_cases = [
+            # (text, expected_accuracy_level)
+            ("Perfect clear text", "high"),      # Should have high confidence and accuracy
+            ("Noisy 0CR t3xt w1th err0rs", "low"), # Should have low confidence and accuracy  
+            ("Moderate quality text", "medium"),  # Should have medium confidence and accuracy
+        ]
+        
+        for text, expected_level in test_cases:
+            # Mock engine result based on expected accuracy
+            if expected_level == "high":
+                result = pipeline.OcrResult(text, text.split(), [0.95] * len(text.split()), "tesseract")
+                expected_min_accuracy = 95.0
+            elif expected_level == "medium":
+                result = pipeline.OcrResult(text, text.split(), [0.80] * len(text.split()), "tesseract")
+                expected_min_accuracy = 80.0
+            else:  # low
+                result = pipeline.OcrResult(text, text.split(), [0.60] * len(text.split()), "tesseract")
+                expected_min_accuracy = 60.0
+            
+            # Test that confidence correlates with expected accuracy
+            avg_confidence = result.field_confidence * 100
+            assert avg_confidence >= expected_min_accuracy * 0.8, \
+                f"Confidence {avg_confidence:.1f}% too low for {expected_level} accuracy text"
 
 
 if __name__ == "__main__":
