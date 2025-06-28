@@ -188,15 +188,17 @@ class ConfidenceCalibrator:
         self.calibrators = {}  # Per-engine calibration models
         self.is_fitted = {}
         
-    def fit_from_validation_data(self, validation_data: List[Dict]):
+    def fit_from_validation_data(self, confidences_or_validation_data, accuracies=None):
         """Fit calibration models from validation corpus.
         
-        validation_data format:
-        [{
-            'engine': 'tesseract',
-            'raw_confidence': 0.85,
-            'is_correct': True  # Whether the extraction was accurate
-        }, ...]
+        Two calling modes:
+        1. fit_from_validation_data(confidences: List[float], accuracies: List[float])
+        2. fit_from_validation_data(validation_data: List[Dict]) with format:
+           [{
+               'engine': 'tesseract',
+               'raw_confidence': 0.85,
+               'is_correct': True  # Whether the extraction was accurate
+           }, ...]
         """
         try:
             from sklearn.isotonic import IsotonicRegression
@@ -204,7 +206,36 @@ class ConfidenceCalibrator:
             LOGGER.warning("scikit-learn not available for confidence calibration")
             return
         
-        # Group by engine
+        # Handle two calling modes
+        if accuracies is not None:
+            # Mode 1: Simple confidences and accuracies lists
+            if len(confidences_or_validation_data) != len(accuracies):
+                raise ValueError("Confidences and accuracies lists must have same length")
+            
+            # Create single calibrator for all engines
+            X = np.array(confidences_or_validation_data).reshape(-1, 1)
+            y = np.array(accuracies)
+            
+            if len(X) < 10:
+                LOGGER.warning("Insufficient validation data for calibration (%d samples)", len(X))
+                return
+            
+            try:
+                calibrator = IsotonicRegression(out_of_bounds='clip')
+                calibrator.fit(X.flatten(), y)
+                
+                # Apply to all engines
+                for engine in ['tesseract', 'easyocr', 'paddleocr', 'mistral', 'gemini']:
+                    self.calibrators[engine] = calibrator
+                    self.is_fitted[engine] = True
+                
+                LOGGER.info("Fitted global calibration model with %d samples", len(X))
+            except Exception as exc:
+                LOGGER.warning("Failed to fit global calibrator: %s", exc)
+            return
+        
+        # Mode 2: Per-engine validation data
+        validation_data = confidences_or_validation_data
         engine_data = {}
         for item in validation_data:
             engine = item['engine']
@@ -237,9 +268,13 @@ class ConfidenceCalibrator:
             
             LOGGER.info("Fitted calibration model for %s with %d samples", engine, len(X))
     
-    def calibrate_confidence(self, raw_confidence: float, engine: str) -> float:
+    def calibrate_confidence(self, raw_confidence: float, engine: str = None) -> float:
         """Convert raw confidence to calibrated probability."""
-        if engine not in self.is_fitted or not self.is_fitted[engine]:
+        if engine is None:
+            # Use any available calibrator for global calibration
+            engine = next((e for e in self.is_fitted if self.is_fitted[e]), None)
+        
+        if not engine or engine not in self.is_fitted or not self.is_fitted[engine]:
             # Return raw confidence if no calibration available
             return raw_confidence
             
@@ -1538,12 +1573,11 @@ def _aggregate_multi_engine_results(results: List[Tuple[str, OcrResult]]) -> Ocr
         LOGGER.info("Attempting token-level ensemble voting with %d engines", len(bbox_results))
         ensemble_result = _vote_merge_tokens(bbox_results)
         
-        # If ensemble gives good confidence, use it
-        if ensemble_result.field_confidence >= TAU_ENHANCER_PASS:
-            LOGGER.info("Ensemble voting successful with confidence %.2f", ensemble_result.field_confidence)
-            return ensemble_result
+        # Always use ensemble voting when available - this prevents single-engine errors
+        LOGGER.info("Using ensemble voting result with confidence %.2f", ensemble_result.field_confidence)
+        return ensemble_result
     
-    # Fallback to confidence-based selection
+    # Fallback to confidence-based selection only when voting is not possible
     valid_results.sort(key=lambda x: x[1].field_confidence, reverse=True)
     best_engine, best_result = valid_results[0]
     
@@ -1988,11 +2022,11 @@ def _preprocess_ocr_errors(text: str) -> str:
     
     return text
 
-def extract_fields(text: str, file_path: Path = None) -> Dict[str, int]:
-    """Enhanced extraction with field-aware post-processing."""
+def extract_fields(text: str, file_path: Path = None, ocr_result: OcrResult = None) -> Dict[str, int]:
+    """Enhanced extraction with field-aware post-processing and per-field confidence tracking."""
     
     # Phase 1: Try simple, reliable regex patterns first
-    out = _extract_with_simple_regex(text)
+    out, field_confidences = _extract_with_simple_regex_and_confidence(text, ocr_result)
     
     # Phase 2: If regex fails or gives incomplete results, use KIE
     if len(out) < 2 or not _validate_extraction_values(out.get("electricity_kwh"), out.get("carbon_kgco2e")):
@@ -2007,14 +2041,176 @@ def extract_fields(text: str, file_path: Path = None) -> Dict[str, int]:
             if _validate_extraction_values(kie_electricity, kie_carbon):
                 LOGGER.info("KIE extraction passed validation, using KIE results")
                 out.update(kie_result)
+                # KIE has moderate confidence
+                if "electricity_kwh" in kie_result:
+                    field_confidences["electricity_kwh"] = 0.8
+                if "carbon_kgco2e" in kie_result:
+                    field_confidences["carbon_kgco2e"] = 0.8
             elif len(kie_result) > len(out):
                 LOGGER.info("KIE extraction more complete than regex, using KIE results")
                 out.update(kie_result)
+                # Lower confidence for unvalidated KIE
+                if "electricity_kwh" in kie_result:
+                    field_confidences["electricity_kwh"] = 0.6
+                if "carbon_kgco2e" in kie_result:
+                    field_confidences["carbon_kgco2e"] = 0.6
     
     # Phase 3: Apply field-aware post-processing corrections
     corrected_out = _apply_field_aware_corrections(text, out)
     
+    # Add per-field confidence metadata
+    if field_confidences:
+        corrected_out["_field_confidences"] = field_confidences
+    
     return corrected_out
+
+def _extract_with_simple_regex_and_confidence(text: str, ocr_result: OcrResult = None) -> Tuple[Dict[str, int], Dict[str, float]]:
+    """Simple regex extraction with per-field confidence based on OCR token confidence."""
+    out = {}
+    field_confidences = {}
+    
+    # Simple electricity patterns - most reliable only
+    simple_patterns = [
+        re.compile(r"\b(\d{1,3}(?:,\d{3})*|\d{2,5})\s*kWh", re.I),  # "299 kWh" or "1,234 kWh"
+        re.compile(r"Electricity\s+(\d{1,3}(?:,\d{3})*|\d{2,5})", re.I),  # "Electricity 299"
+        re.compile(r"(\d{1,3}(?:,\d{3})*|\d{2,5})\s+Electricity", re.I),  # "299 Electricity"
+        re.compile(r"Consumption[:\s]+(\d{1,3}(?:,\d{3})*|\d{2,5})", re.I),  # "Consumption: 299"
+        re.compile(r"usage[:\s]+(\d{1,3}(?:,\d{3})*|\d{2,5})", re.I),  # "usage: 1,234"
+    ]
+    
+    for pattern in simple_patterns:
+        m = pattern.search(text)
+        if m:
+            try:
+                value = int(m.group(1).replace(',', ''))
+                if 50 <= value <= 50000:
+                    out["electricity_kwh"] = value
+                    # Calculate field confidence based on OCR token confidence in match region
+                    field_confidences["electricity_kwh"] = _calculate_field_confidence(
+                        text, m.start(), m.end(), ocr_result, "electricity"
+                    )
+                    break
+            except (ValueError, TypeError):
+                continue
+    
+    # Simple carbon patterns - most reliable only
+    carbon_patterns = [
+        re.compile(r"(\d{1,4})\s*kg\s*CO2e?", re.I),  # "120 kg CO2e"
+        re.compile(r"CO2e?\s+(\d{1,4})", re.I),  # "CO2e 120"
+        re.compile(r"Carbon[^0-9]*(\d{1,4})", re.I),  # "Carbon: 120"
+        re.compile(r"footprint[^0-9]*(\d{1,4})", re.I),  # "footprint 200"
+        re.compile(r"(\d{1,4})\s*kg(?!\s*CO2)", re.I),  # "200 kg" (not followed by CO2)
+    ]
+    
+    for pattern in carbon_patterns:
+        m = pattern.search(text)
+        if m:
+            try:
+                value = int(m.group(1))
+                if 10 <= value <= 20000:
+                    out["carbon_kgco2e"] = value
+                    # Calculate field confidence based on OCR token confidence in match region
+                    field_confidences["carbon_kgco2e"] = _calculate_field_confidence(
+                        text, m.start(), m.end(), ocr_result, "carbon"
+                    )
+                    break
+            except (ValueError, TypeError):
+                continue
+    
+    return out, field_confidences
+
+def _apply_field_specific_enhancement(fields: Dict[str, Any], ocr_result: OcrResult, file_path: Path) -> Dict[str, Any]:
+    """Apply enhancement or LLM fallback only to fields with low confidence."""
+    field_confidences = fields.get("_field_confidences", {})
+    enhanced_fields = fields.copy()
+    
+    if not field_confidences:
+        # No per-field confidence available, use global confidence
+        if ocr_result.field_confidence < TAU_ENHANCER_PASS:
+            LOGGER.info("Global confidence %.2f below threshold, considering enhancement", 
+                       ocr_result.field_confidence)
+            return enhanced_fields
+        else:
+            LOGGER.info("Global confidence %.2f acceptable, no enhancement needed", 
+                       ocr_result.field_confidence)
+            return enhanced_fields
+    
+    # Check each field's confidence
+    fields_needing_enhancement = []
+    fields_needing_llm = []
+    
+    for field, confidence in field_confidences.items():
+        if confidence < TAU_LLM_PASS:
+            fields_needing_llm.append(field)
+            LOGGER.info("Field %s confidence %.2f below LLM threshold %.2f", 
+                       field, confidence, TAU_LLM_PASS)
+        elif confidence < TAU_ENHANCER_PASS:
+            fields_needing_enhancement.append(field)
+            LOGGER.info("Field %s confidence %.2f below enhancement threshold %.2f", 
+                       field, confidence, TAU_ENHANCER_PASS)
+        else:
+            LOGGER.info("Field %s confidence %.2f acceptable", field, confidence)
+    
+    # Apply targeted enhancement only to weak fields
+    if fields_needing_enhancement or fields_needing_llm:
+        try:
+            # For now, apply global enhancement if any field needs it
+            # In future versions, this could be made more field-specific
+            if fields_needing_llm:
+                LOGGER.info("Applying LLM enhancement for fields: %s", fields_needing_llm)
+                enhanced_result = _run_llm_enhancement(ocr_result, file_path)
+                if enhanced_result:
+                    llm_fields = extract_fields(enhanced_result.text, file_path, enhanced_result)
+                    # Only update the weak fields
+                    for field in fields_needing_llm:
+                        if field in llm_fields and not field.startswith("_"):
+                            enhanced_fields[field] = llm_fields[field]
+                            LOGGER.info("Enhanced field %s with LLM: %s", field, llm_fields[field])
+            
+            elif fields_needing_enhancement:
+                LOGGER.info("Applying enhancement for fields: %s", fields_needing_enhancement)
+                enhanced_result = _run_enhancement(ocr_result, file_path)
+                if enhanced_result:
+                    enh_fields = extract_fields(enhanced_result.text, file_path, enhanced_result)
+                    # Only update the weak fields
+                    for field in fields_needing_enhancement:
+                        if field in enh_fields and not field.startswith("_"):
+                            enhanced_fields[field] = enh_fields[field]
+                            LOGGER.info("Enhanced field %s: %s", field, enh_fields[field])
+        
+        except Exception as e:
+            LOGGER.warning("Field-specific enhancement failed: %s", e)
+    
+    else:
+        LOGGER.info("All fields have acceptable confidence, no enhancement needed")
+    
+    return enhanced_fields
+
+def _calculate_field_confidence(text: str, match_start: int, match_end: int, 
+                              ocr_result: OcrResult, field_type: str) -> float:
+    """Calculate confidence for a specific field based on OCR token confidence in the match region."""
+    if not ocr_result or not ocr_result.tokens or not ocr_result.confidences:
+        # Default confidence based on field type
+        return 0.9 if field_type == "electricity" else 0.85
+    
+    # Find tokens that overlap with the matched text region
+    matched_text = text[match_start:match_end]
+    relevant_confidences = []
+    
+    # Simple approach: find tokens that appear in the matched region
+    for i, token in enumerate(ocr_result.tokens):
+        if token in matched_text and i < len(ocr_result.confidences):
+            relevant_confidences.append(ocr_result.confidences[i])
+    
+    if relevant_confidences:
+        # Use geometric mean for field confidence (more conservative than arithmetic mean)
+        import math
+        log_sum = sum(math.log(max(conf, 0.01)) for conf in relevant_confidences)  # Avoid log(0)
+        geometric_mean = math.exp(log_sum / len(relevant_confidences))
+        return min(geometric_mean, 0.99)  # Cap at 99%
+    else:
+        # Fallback: use overall OCR confidence
+        return ocr_result.field_confidence if ocr_result.field_confidence > 0 else 0.85
 
 def _extract_with_simple_regex(text: str) -> Dict[str, int]:
     """Simple, reliable regex extraction for common patterns."""
@@ -2247,7 +2443,10 @@ def main() -> None:
         sys.exit(1)
 
     ocr_res = run_ocr(file_path)
-    fields = extract_fields(ocr_res.text, file_path)
+    fields = extract_fields(ocr_res.text, file_path, ocr_res)
+    
+    # Apply field-specific enhancement routing
+    fields = _apply_field_specific_enhancement(fields, ocr_res, file_path)
     
     # Add OCR metadata and error tracking
     fields["_confidence"] = ocr_res.field_confidence
