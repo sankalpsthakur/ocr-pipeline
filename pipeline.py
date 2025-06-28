@@ -329,6 +329,46 @@ def _mistral_ocr(image) -> OcrResult:
         LOGGER.warning("Mistral OCR failed: %s", exc)
         return OcrResult("", [], [])
 
+def _datalab_ocr(image) -> OcrResult:
+    """Datalab OCR API integration."""
+    if requests is None:
+        raise RuntimeError("requests package not available for Datalab")
+    
+    api_key = config.DATALAB_API_KEY
+    if not api_key:
+        LOGGER.warning("Datalab API key not configured; skipping Datalab OCR")
+        return OcrResult("", [], [])
+    
+    try:
+        import io
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        url = config.DATALAB_URL
+        headers = {"X-Api-Key": api_key}
+        files = {'file': ('image.png', buffer, 'image/png')}
+        
+        response = requests.post(url, files=files, headers=headers)
+        response.raise_for_status()
+        
+        data = response.json()
+        if 'text' in data and data['text']:
+            extracted_text = data['text'].strip()
+            tokens = extracted_text.split()
+            confidences = [0.95] * len(tokens)
+            return OcrResult(text=extracted_text, tokens=tokens, confidences=confidences)
+        else:
+            LOGGER.warning("No text found in Datalab OCR response")
+            return OcrResult("", [], [])
+            
+    except Exception as exc:
+        LOGGER.warning("Datalab OCR failed: %s", exc)
+        return OcrResult("", [], [])
+
 def _gemma_vlm_ocr(image, bounding_boxes=None) -> OcrResult:
     """Gemma VLM OCR with optional bounding boxes."""
     if requests is None:
@@ -712,6 +752,17 @@ def _run_single_engine_with_cache(args: Tuple[Path, str, bool, int]) -> Tuple[st
         elif engine == "mistral":
             result = _mistral_ocr(file_path)
             result.engine = engine
+        elif engine == "datalab":
+            if is_image:
+                result = _datalab_ocr(images[0])
+            else:
+                joined, tok, conf = "", [], []
+                for img in images:
+                    res = _datalab_ocr(img)
+                    joined += res.text + "\n"
+                    tok.extend(res.tokens)
+                    conf.extend(res.confidences)
+                result = OcrResult(joined, tok, conf, engine)
         elif engine == "gemma_vlm":
             result = _gemma_vlm_ocr(file_path)
             result.engine = engine
@@ -809,7 +860,7 @@ def run_ocr(file_path: Path) -> OcrResult:
     if best_result.field_confidence < TAU_LLM_PASS:
         LOGGER.info("Traditional OCR confidence too low (%.2f), trying VLM engines", best_result.field_confidence)
         
-        vlm_engines = ["mistral", "gemma_vlm"]
+        vlm_engines = ["mistral", "datalab", "gemma_vlm"]
         vlm_args = [(file_path, engine, is_image, DPI_PRIMARY) for engine in vlm_engines]
         
         # Run VLM engines in parallel with a timeout
