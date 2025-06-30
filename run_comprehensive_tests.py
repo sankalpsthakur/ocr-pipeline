@@ -1,111 +1,123 @@
 #!/usr/bin/env python3
 """
-Script to run comprehensive tests and generate a consolidated report.
+Comprehensive Test Runner for OCR Pipeline
+
+Tests include:
+- Downscaling tests (100%, 50%, 25% scale)
+- Character, word, and field level accuracy
+- Focus on electricity (299 kWh) and carbon footprint (120 kg CO2e)
+- Confidence score correlation
 
 Usage:
-    python run_comprehensive_tests.py                    # Run tests with detailed output
-    python run_comprehensive_tests.py --consolidated     # Run tests and show consolidated report
-    python run_comprehensive_tests.py --save-report      # Run tests and save report to file
+    python run_comprehensive_tests.py              # Run all tests
+    python run_comprehensive_tests.py --quick      # Run only on original image
+    python run_comprehensive_tests.py --json       # Output results as JSON
 """
 
-import subprocess
 import sys
 import os
-from datetime import datetime
+import json
+from pathlib import Path
+
+# Add current directory to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from test_comprehensive import ComprehensiveOCRTester
 
 
-def run_tests_with_consolidated_report():
-    """Run the comprehensive test suite with consolidated report."""
+def run_comprehensive_tests(quick_mode=False):
+    """Run the comprehensive test suite."""
+    tester = ComprehensiveOCRTester()
     
-    # Ensure we're in the correct directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    if quick_mode:
+        # Test only original image
+        print("Running quick test (original image only)...")
+        if Path("ActualBill.png").exists():
+            tester.test_image("ActualBill.png", scale=1.0)
+            tester.generate_summary_report()
+        else:
+            print("Error: ActualBill.png not found!")
+            return 1
+    else:
+        # Run full test suite
+        tester.run_comprehensive_tests()
     
-    # Run the tests with consolidated report
-    cmd = [
-        sys.executable,
-        "tests/test_consolidated_comprehensive.py",
-        "--consolidated-report"
-    ]
+    # Check if tests passed
+    if tester.results:
+        avg_accuracy = sum(r['field_accuracy'] for r in tester.results) / len(tester.results)
+        return 0 if avg_accuracy >= 90 else 1
     
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    return result.stdout, result.stderr, result.returncode
+    return 1
 
 
-def run_detailed_tests():
-    """Run the comprehensive test suite with detailed output."""
+def output_json_results():
+    """Run tests and output results as JSON."""
+    import io
+    from contextlib import redirect_stdout
     
-    # Ensure we're in the correct directory
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    # Capture stdout
+    f = io.StringIO()
+    with redirect_stdout(f):
+        tester = ComprehensiveOCRTester()
+        tester.run_comprehensive_tests()
     
-    # Run pytest with verbose output
-    cmd = [
-        sys.executable,
-        "-m", "pytest",
-        "tests/test_consolidated_comprehensive.py",
-        "-v", "-s"
-    ]
+    # Return JSON results
+    if tester.results:
+        summary = {
+            "total_tests": len(tester.results),
+            "average_field_accuracy": sum(r['field_accuracy'] for r in tester.results) / len(tester.results),
+            "electricity_accuracy": sum(1 for r in tester.results if r['electricity_kwh']['correct']) / len(tester.results) * 100,
+            "carbon_accuracy": sum(1 for r in tester.results if r['carbon_kgco2e']['correct']) / len(tester.results) * 100,
+            "meets_target": sum(r['field_accuracy'] for r in tester.results) / len(tester.results) >= 90
+        }
+        
+        print(json.dumps({
+            "summary": summary,
+            "results": tester.results
+        }, indent=2))
+        
+        return 0 if summary["meets_target"] else 1
     
-    result = subprocess.run(cmd)
-    
-    return result.returncode
-
-
-def save_report_to_file(report_content):
-    """Save the consolidated report to a timestamped file."""
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"consolidated_test_report_{timestamp}.txt"
-    
-    with open(filename, 'w') as f:
-        f.write(report_content)
-    
-    print(f"\nReport saved to: {filename}")
-    return filename
+    return 1
 
 
 def main():
     """Main entry point."""
     
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--consolidated":
-            # Run with consolidated report output
-            stdout, stderr, returncode = run_tests_with_consolidated_report()
-            print(stdout)
-            if stderr:
-                print("\n[STDERR OUTPUT]")
-                print(stderr)
+        if sys.argv[1] == "--quick":
+            # Run quick test
+            returncode = run_comprehensive_tests(quick_mode=True)
             sys.exit(returncode)
             
-        elif sys.argv[1] == "--save-report":
-            # Run and save consolidated report
-            stdout, stderr, returncode = run_tests_with_consolidated_report()
-            
-            # Save the report
-            if stdout:
-                filename = save_report_to_file(stdout)
-                print(f"\nTests completed with return code: {returncode}")
-                print(f"Full report saved to: {filename}")
-                
-                # Also print a summary
-                print("\nSUMMARY:")
-                # Extract key metrics from the report
-                lines = stdout.split('\n')
-                for line in lines:
-                    if "Field-Level Accuracy:" in line:
-                        print(f"  {line.strip()}")
-                    elif "Status:" in line and "✓" in line:
-                        print(f"  {line.strip()}")
-                    elif "passed" in line and "warning" in line:
-                        print(f"  {line.strip()}")
-            
+        elif sys.argv[1] == "--json":
+            # Output JSON results
+            returncode = output_json_results()
             sys.exit(returncode)
+            
+        elif sys.argv[1] == "--help" or sys.argv[1] == "-h":
+            print("Comprehensive OCR Pipeline Test Suite")
+            print("\nUsage:")
+            print("  python run_comprehensive_tests.py         # Run all tests (100%, 50%, 25% scale)")
+            print("  python run_comprehensive_tests.py --quick # Test only original image")
+            print("  python run_comprehensive_tests.py --json  # Output results as JSON")
+            print("\nTests include:")
+            print("  - Character-level accuracy")
+            print("  - Word-level accuracy")
+            print("  - Field-level accuracy (electricity: 299 kWh, carbon: 120 kg CO2e)")
+            print("  - Confidence score correlation")
+            print("  - Downscaling robustness (50% and 25% scale)")
+            sys.exit(0)
+        
+        else:
+            print(f"Unknown option: {sys.argv[1]}")
+            print("Use --help for usage information")
+            sys.exit(1)
     
-    # Default: run detailed tests
-    print("Running comprehensive test suite with detailed output...")
-    print("-" * 60)
-    returncode = run_detailed_tests()
-    sys.exit(returncode)
+    else:
+        # Default: run comprehensive tests
+        returncode = run_comprehensive_tests(quick_mode=False)
+        sys.exit(returncode)
 
 
 if __name__ == "__main__":
