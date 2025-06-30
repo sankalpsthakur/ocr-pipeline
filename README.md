@@ -5,7 +5,7 @@ A lean, high-accuracy OCR pipeline for extracting key fields from DEWA utility b
 ## Features
 
 - ✅ **90%+ accuracy** on electricity (kWh) and carbon footprint (kg CO2e) fields
-- 🚀 **<200MB footprint** with PP-OCRv5 mobile models (vs 2GB+ traditional)
+- 🚀 **<200MB footprint** with PP-OCRv5 mobile models 
 - ⚡ **Fast inference** (~150ms per image)
 - 🔄 **Automatic fallback** to VLM APIs for challenging cases
 - 📊 **Confidence calibration** for reliable field extraction
