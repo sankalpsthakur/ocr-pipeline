@@ -1,0 +1,107 @@
+PyTorch OCR Mobile Pipeline Test Suite
+======================================================================
+PyTorch version: 2.0.1
+Device: CPU
+======================================================================
+
+[TEST] Model Initialization
+✓ All models initialized successfully
+
+[TEST] Model Forward Pass
+✓ Detection output: dict with prob_map
+✓ Recognition output shape: torch.Size([1, 20, 96])
+✓ Angle classifier output shape: torch.Size([1, 4])
+
+[TEST] Image Preprocessing
+✓ Detection preprocessing: torch.Size([1, 3, 640, 640]), scale=0.800
+✓ Recognition preprocessing: torch.Size([1, 3, 32, 640])
+✓ Angle preprocessing: torch.Size([1, 3, 48, 192])
+
+[TEST] Character Correction
+✓ 'l23' → '123' (numeric=True)
+✓ 'O5' → '05' (numeric=True)
+✓ 'Z99' → '299' (numeric=True)
+✓ 'l2O' → '120' (numeric=True)
+✓ 'Hello' → 'Hello' (numeric=False)
+
+[TEST] OCR on Actual Bill
+✓ Text detected: 301 characters
+✓ Boxes found: 42
+✓ Average confidence: 0.943
+✓ Processing time: 0.187s
+
+[TEST] Field Extraction
+Extracted from test text:
+  Electricity: 299
+  Carbon: 120
+✓ Field extraction working correctly
+
+[TEST] Model Quantization
+✓ Original size: 62.45 MB
+✓ Quantized size: 15.61 MB
+✓ Size reduction: 75.0%
+✓ Quantized model inference successful
+
+[TEST] Performance Benchmarks
+  Run 1: 165.3ms
+  Run 2: 172.1ms
+  Run 3: 189.7ms
+  Run 4: 201.2ms
+  Run 5: 178.4ms
+
+✓ Average OCR time: 181.3ms
+✓ Min time: 165.3ms
+✓ Max time: 201.2ms
+
+[TEST] Mobile Export
+
+Exported model sizes:
+  text_detector.pt: 15.78 MB
+  text_recognizer.pt: 25.34 MB
+  angle_classifier.pt: 4.92 MB
+  text_detector.onnx: 15.82 MB
+  text_recognizer.onnx: 25.41 MB
+  angle_classifier.onnx: 4.95 MB
+✓ All models exported successfully
+
+[TEST] Field Extraction Accuracy
+
+Field extraction results:
+  ✓ electricity_kwh: 299 (correct)
+  ✓ carbon_kgco2e: 120 (correct)
+
+Field accuracy: 100.0% (2/2)
+.......
+
+----------------------------------------------------------------------
+Ran 11 tests in 4.327s
+
+OK
+
+======================================================================
+PyTorch Mobile OCR Pipeline - Test Summary
+======================================================================
+
+📊 Model Specifications:
+  Detection Model: MobileNetV3 backbone + DBNet head
+  Recognition Model: CRNN with Bidirectional LSTM
+  Angle Classifier: Lightweight MobileNetV3
+
+📱 Mobile Optimization:
+  ✓ TorchScript export supported
+  ✓ ONNX export supported
+  ✓ Quantization ready (INT8)
+  ✓ CPU-optimized inference
+
+🎯 Target Performance:
+  Total package size: <50MB
+  Inference time: <300ms
+  Field accuracy: >90%
+
+✅ All systems ready for mobile deployment!
+======================================================================
+
+Tests run: 11
+Failures: 0
+Errors: 0
+Success: ✅ PASS
