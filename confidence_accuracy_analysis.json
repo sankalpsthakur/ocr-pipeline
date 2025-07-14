@@ -1,0 +1,190 @@
+{
+  "correlation_analysis": {
+    "pearson_correlation": 0.5900699045809389,
+    "p_value": 0.0038438208387891687,
+    "interpretation": "Moderate positive correlation",
+    "statistical_significance": "Significant"
+  },
+  "confidence_ranges": {
+    "high_confidence": {
+      "range": "> 0.8",
+      "count": 4,
+      "avg_accuracy": 0.625,
+      "accuracy_std": 0.21650635094610965
+    },
+    "medium_confidence": {
+      "range": "0.4 - 0.8",
+      "count": 10,
+      "avg_accuracy": 0.5,
+      "accuracy_std": 0.0
+    },
+    "low_confidence": {
+      "range": "< 0.4",
+      "count": 8,
+      "avg_accuracy": 0.3125,
+      "accuracy_std": 0.24206145913796356
+    }
+  },
+  "calibration_quality": {
+    "total_samples": 22,
+    "perfect_extractions": 1,
+    "failed_extractions": 3,
+    "partial_extractions": 18
+  },
+  "detailed_results": [
+    {
+      "test_name": "DEWA_original",
+      "confidence": 0.917726,
+      "accuracy": 1.0,
+      "electricity_correct": true,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "DEWA_jpeg_q30",
+      "confidence": 0.91227,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "DEWA_jpeg_q50",
+      "confidence": 0.886479,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_jpeg_q70",
+      "confidence": 0.709216,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_webp",
+      "confidence": 0.704791,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_scale_50",
+      "confidence": 0.430909,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_scale_75",
+      "confidence": 0.715074,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_scale_150",
+      "confidence": 0.691433,
+      "accuracy": 0.5,
+      "electricity_correct": true,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_noise_low",
+      "confidence": 0.0,
+      "accuracy": 0.0,
+      "electricity_correct": false,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_noise_medium",
+      "confidence": 0.0,
+      "accuracy": 0.0,
+      "electricity_correct": false,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "DEWA_noise_high",
+      "confidence": 0.0,
+      "accuracy": 0.0,
+      "electricity_correct": false,
+      "carbon_correct": false
+    },
+    {
+      "test_name": "SEWA_original",
+      "confidence": 0.803316,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_jpeg_q30",
+      "confidence": 0.604548,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_jpeg_q50",
+      "confidence": 0.796891,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_jpeg_q70",
+      "confidence": 0.781657,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_webp",
+      "confidence": 0.792583,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_scale_50",
+      "confidence": 0.0,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_scale_75",
+      "confidence": 0.197064,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_scale_150",
+      "confidence": 0.491502,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_noise_low",
+      "confidence": 0.234667,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_noise_medium",
+      "confidence": 0.0,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    },
+    {
+      "test_name": "SEWA_noise_high",
+      "confidence": 0.0,
+      "accuracy": 0.5,
+      "electricity_correct": false,
+      "carbon_correct": true
+    }
+  ]
+}

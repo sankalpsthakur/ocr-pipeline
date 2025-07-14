@@ -1,0 +1,63 @@
+{
+  "documentType": "utility_bill",
+  "extractedData": {
+    "billInfo": {
+      "providerName": "Dubai Electricity and Water Authority (DEWA)",
+      "accountNumber": "2052672303",
+      "billingPeriod": {
+        "startDate": "",
+        "endDate": "",
+        "periodicity": "Monthly"
+      },
+      "billDate": "21/05/2025"
+    },
+    "consumptionData": {
+      "electricity": {
+        "value": 299.0,
+        "unit": "kWh",
+        "dataQuality": "measured",
+        "meterReading": {
+          "current": "19462",
+          "previous": "19163",
+          "readingType": "actual"
+        }
+      },
+      "water": {},
+      "renewablePercentage": 0.0,
+      "peakDemand": {
+        "value": 0.0,
+        "unit": "kW"
+      }
+    },
+    "emissionFactorReference": {
+      "region": "United Arab Emirates",
+      "gridMix": "UAE_GRID_2024",
+      "year": "2024"
+    },
+    "emissionsData": {
+      "scope2": {
+        "totalCO2e": {
+          "value": 120.0,
+          "unit": "kgCO2e"
+        },
+        "breakdown": {
+          "electricity": 120.0
+        }
+      }
+    }
+  },
+  "validation": {
+    "confidence": 0.892308,
+    "extractionMethod": "pytorch_mobile_dbnet",
+    "manualVerificationRequired": false
+  },
+  "metadata": {
+    "sourceDocument": "DEWA.png",
+    "pageNumbers": [
+      1
+    ],
+    "extractionTimestamp": "2025-07-14T18:41:07.149295Z",
+    "sha256": "30f5e06f129f3a68902bb7f7ebeba3a2f596e6c6378c6152637e6702e1070550",
+    "processingTimeSeconds": 0.731464
+  }
+}

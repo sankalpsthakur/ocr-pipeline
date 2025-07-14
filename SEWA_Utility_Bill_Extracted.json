@@ -1,0 +1,56 @@
+{
+  "documentType": "utility_bill",
+  "extractedData": {
+    "billInfo": {
+      "providerName": "Sharjah Electricity and Water Authority (SEWA)",
+      "accountNumber": "7965198366",
+      "billingPeriod": {
+        "startDate": "",
+        "endDate": "",
+        "periodicity": "Monthly"
+      },
+      "billDate": "15/02/2020"
+    },
+    "consumptionData": {
+      "electricity": {
+        "value": 358.0,
+        "unit": "kWh",
+        "dataQuality": "measured",
+        "meterReading": {
+          "current": "",
+          "previous": "",
+          "readingType": "actual"
+        }
+      },
+      "water": {
+        "value": 121.3,
+        "unit": "m\u00b3",
+        "dataQuality": "measured"
+      },
+      "renewablePercentage": 0.0,
+      "peakDemand": {
+        "value": 0.0,
+        "unit": "kW"
+      }
+    },
+    "emissionFactorReference": {
+      "region": "United Arab Emirates",
+      "gridMix": "UAE_GRID_2024",
+      "year": "2024"
+    }
+  },
+  "validation": {
+    "confidence": 0.645951,
+    "extractionMethod": "pytorch_mobile_dbnet",
+    "manualVerificationRequired": true
+  },
+  "metadata": {
+    "sourceDocument": "SEWA.png",
+    "pageNumbers": [
+      1
+    ],
+    "extractionTimestamp": "2025-07-14T18:41:15.717812Z",
+    "sha256": "0bba634a8482cd1b53991d85fdf24d32323d8aaac85ff2dfad8d88935f0b2daf",
+    "processingTimeSeconds": 0.890352
+  }
+}

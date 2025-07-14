@@ -1,0 +1,285 @@
+{
+  "summary": {
+    "total_tests": 22,
+    "successful_tests": 22,
+    "failed_tests": 0,
+    "average_confidence": 0.4850057272727273,
+    "average_processing_time": 1.7138889269395308
+  },
+  "test_results": [
+    {
+      "test_name": "DEWA_original",
+      "success": true,
+      "confidence": 0.917726,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 120.0,
+      "processing_time": 2.3454971313476562,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_jpeg_q30",
+      "success": true,
+      "confidence": 0.91227,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 120.0,
+      "carbon_kgco2e": 120.0,
+      "processing_time": 1.7619500160217285,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_jpeg_q50",
+      "success": true,
+      "confidence": 0.886479,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.7569947242736816,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_jpeg_q70",
+      "success": true,
+      "confidence": 0.709216,
+      "field_accuracy": {
+        "overall": 0.6666666666666666
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.7567110061645508,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_webp",
+      "success": true,
+      "confidence": 0.704791,
+      "field_accuracy": {
+        "overall": 0.6666666666666666
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.866211175918579,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_scale_50",
+      "success": true,
+      "confidence": 0.430909,
+      "field_accuracy": {
+        "overall": 0.3333333333333333
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.4373607635498047,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_scale_75",
+      "success": true,
+      "confidence": 0.715074,
+      "field_accuracy": {
+        "overall": 0.6666666666666666
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.6219651699066162,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_scale_150",
+      "success": true,
+      "confidence": 0.691433,
+      "field_accuracy": {
+        "overall": 0.6666666666666666
+      },
+      "electricity_kwh": 299.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 2.061983823776245,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_noise_low",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.636949062347412,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_noise_medium",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.7688162326812744,
+      "error": null
+    },
+    {
+      "test_name": "DEWA_noise_high",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.7220549583435059,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_original",
+      "success": true,
+      "confidence": 0.803316,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 401.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.8144750595092773,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_jpeg_q30",
+      "success": true,
+      "confidence": 0.604548,
+      "field_accuracy": {
+        "overall": 0.6666666666666666
+      },
+      "electricity_kwh": 558.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.8841068744659424,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_jpeg_q50",
+      "success": true,
+      "confidence": 0.796891,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 127.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.8290369510650635,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_jpeg_q70",
+      "success": true,
+      "confidence": 0.781657,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 102.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.8966670036315918,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_webp",
+      "success": true,
+      "confidence": 0.792583,
+      "field_accuracy": {
+        "overall": 1.0
+      },
+      "electricity_kwh": 701.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.937856912612915,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_scale_50",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.1782886981964111,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_scale_75",
+      "success": true,
+      "confidence": 0.197064,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.6010761260986328,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_scale_150",
+      "success": true,
+      "confidence": 0.491502,
+      "field_accuracy": {
+        "overall": 0.3333333333333333
+      },
+      "electricity_kwh": 701.0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.7579851150512695,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_noise_low",
+      "success": true,
+      "confidence": 0.234667,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.3594179153442383,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_noise_medium",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.3426737785339355,
+      "error": null
+    },
+    {
+      "test_name": "SEWA_noise_high",
+      "success": true,
+      "confidence": 0.0,
+      "field_accuracy": {
+        "overall": 0.0
+      },
+      "electricity_kwh": 0,
+      "carbon_kgco2e": 0,
+      "processing_time": 1.3674778938293457,
+      "error": null
+    }
+  ],
+  "ground_truth_validation": {
+    "dewa_expected": {
+      "electricity_kwh": 299,
+      "carbon_kgco2e": 120
+    },
+    "sewa_expected": {
+      "electricity_kwh": 358,
+      "carbon_kgco2e": 0
+    }
+  }
+}
