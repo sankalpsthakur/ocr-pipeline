@@ -7,6 +7,7 @@ Simple REST API for utility bill OCR processing with Railway deployment support.
 import os
 import tempfile
 import json
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
