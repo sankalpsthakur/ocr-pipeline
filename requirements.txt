@@ -6,6 +6,13 @@ numpy>=1.21.0
 opencv-python-headless
 scipy
 
+# Tesseract OCR (fallback)
+pytesseract
+
+# Additional dependencies for Railway
+pdf2image
+pdfminer.six
+
 # Web Service
 fastapi>=0.68.0
 uvicorn[standard]>=0.15.0
