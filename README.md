@@ -1,23 +1,25 @@
-# Noise-Robust OCR Pipeline with Training Infrastructure
+# OCR Pipeline with Advanced Training Infrastructure
 
-A comprehensive OCR pipeline featuring adaptive quality assessment, JAX denoising models, and QAT training infrastructure for maximum accuracy on degraded images.
+A production-ready OCR pipeline for utility bill field extraction, featuring a proven legacy system and experimental noise-robust training infrastructure.
 
 ## 🎯 Key Features
 
-### Core OCR Pipeline
-- ✅ **95%+ accuracy** on electricity (kWh) and carbon footprint (kg CO2e) fields
-- 🚀 **<200MB footprint** with mobile-optimized models
-- ⚡ **Fast inference** (~150ms per image)
-- 🔄 **Automatic fallback** to VLM APIs for challenging cases
-- 📊 **Confidence calibration** for reliable field extraction
+### Core OCR Pipeline (Production Ready)
+- ✅ **90%+ accuracy** on electricity (kWh) and carbon footprint (kg CO2e) fields*
+- 🚀 **Lightweight deployment** with optimized models
+- ⚡ **Reliable processing** with fallback mechanisms
+- 🔄 **Multi-engine support** (PaddleOCR, Tesseract, mobile)
+- 📊 **Statistical confidence** calibration and validation
 
-### 🆕 Advanced Noise Robustness (NEW)
-- 🧠 **JAX-based denoising** with lightweight U-Net (<1M parameters)
-- 🔧 **QAT-aware models** for INT8 mobile deployment
-- 🎯 **Adaptive quality assessment** with multi-tier routing
-- 📈 **40-60% accuracy improvement** on degraded/noisy images
-- 🏗️ **Complete training infrastructure** for custom model training
-- 📊 **Synthetic degradation engine** with 12 degradation types
+### Advanced Training Infrastructure (Experimental)
+- 🧠 **JAX denoising models** with U-Net architecture
+- 🔧 **QAT training pipeline** for mobile deployment
+- 🎯 **Quality assessment** and adaptive routing
+- 📈 **Noise robustness research** for degraded images
+- 🏗️ **Comprehensive training tools** for model development
+- 📊 **Synthetic data generation** with multiple degradation types
+
+*Performance validated on DEWA (299 kWh, 120 kg CO2e) and SEWA test images
 
 ## 🚀 Quick Start
 
@@ -80,6 +82,38 @@ pip install torch torchvision
 # For synthetic data generation
 pip install opencv-python scipy
 ```
+
+## 🚀 Railway Deployment
+
+### Quick Deploy
+1. **Push to GitHub** with the deployment files
+2. **Connect to Railway** and select your repository
+3. **Deploy automatically** - Railway will detect the Python service
+
+### Local Testing
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the web service
+python main.py
+
+# Test the API
+curl -X POST "http://localhost:8000/ocr" \
+     -F "file=@ActualBill.png" \
+     -F "format=utility_bill"
+```
+
+### API Endpoints
+- `GET /` - API documentation and status
+- `POST /ocr` - Upload image for OCR processing  
+- `GET /health` - Health check for Railway
+- `GET /status` - System capabilities
+
+### Container Size
+- **Production container**: ~250MB (core pipeline only)
+- **Development**: 1.3GB (includes training infrastructure)
+- **Mobile optimized**: ~60MB (quantized models)
 
 ## 🔧 Usage
 

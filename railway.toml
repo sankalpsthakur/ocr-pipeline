@@ -1,0 +1,33 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "ocr-pipeline"
+source = "."
+
+[services.variables]
+PORT = "8000"
+PYTHONPATH = "."
+PYTHONUNBUFFERED = "1"
+
+# Disable advanced features for production deployment
+USE_JAX_DENOISING = "false"
+USE_QAT_MODELS = "false" 
+
+# OCR Configuration
+OCR_LANG = "eng"
+PADDLEOCR_LANG = "en"
+ENABLE_PADDLEOCR = "true"
+GPU_AVAILABLE = "false"
+
+# Performance settings for Railway
+MAX_WORKER_THREADS = "2"
+DPI_PRIMARY = "300"
+MAX_IMAGE_WIDTH = "2048"
+MAX_IMAGE_HEIGHT = "2048"

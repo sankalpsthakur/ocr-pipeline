@@ -1,0 +1,76 @@
+# Railway Deployment Ignore File
+# Optimize container size by excluding unnecessary files
+
+# Development and Testing
+venv/
+.venv/
+env/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+test_*
+*_test.py
+testing/
+
+# Training Infrastructure (exclude from production)
+train_*.py
+*training*
+synthetic_training_data/
+jax_checkpoints/
+mobile_models/
+robustness_evaluation/
+
+# Advanced Components (not needed for basic deployment) 
+jax_denoising_adapter.py
+qat_robust_models.py
+adaptive_ocr_pipeline.py
+create_pretrained_weights.py
+test_trained_system.py
+training_summary.py
+robustness_evaluation.py
+
+# Documentation (keep essential only)
+*.md
+!README.md
+!DEPLOYMENT_GUIDE.md
+
+# Analysis and Reports
+confidence_analysis.py
+confidence_accuracy_analysis.json
+stress_test.py
+stress_test_report.json
+*_SUMMARY.md
+*_REPORT.md
+*_STATUS.md
+
+# Git and IDE
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.log
+output_*.json
+
+# Large sample files (keep essential test images only)
+*.png
+*.pdf
+*.jpg
+*.jpeg
+!ActualBill.png
+!ActualBill.pdf
+
+# Keep essential files for basic OCR
+# pipeline.py - main OCR pipeline
+# config.py - configuration
+# main.py - web service
+# requirements.txt - dependencies
+# railway.toml - Railway config
