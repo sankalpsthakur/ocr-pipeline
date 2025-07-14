@@ -1,0 +1,247 @@
+[
+  {
+    "degradations": [
+      {
+        "type": "rotation",
+        "parameters": {
+          "angle": 1.332354250073494
+        }
+      },
+      {
+        "type": "gaussian_blur",
+        "parameters": {
+          "sigma": 1.0
+        }
+      },
+      {
+        "type": "brightness",
+        "parameters": {
+          "factor": 1.15
+        }
+      },
+      {
+        "type": "contrast",
+        "parameters": {
+          "factor": 0.85
+        }
+      }
+    ],
+    "severity": "low",
+    "source_image": "DEWA.png",
+    "degraded_image": "DEWA_degraded_000.png",
+    "clean_image": "DEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "brightness",
+        "parameters": {
+          "factor": 0.5
+        }
+      },
+      {
+        "type": "contrast",
+        "parameters": {
+          "factor": 0.5
+        }
+      },
+      {
+        "type": "salt_pepper",
+        "parameters": {
+          "proportion": 0.082
+        }
+      }
+    ],
+    "severity": "high",
+    "source_image": "DEWA.png",
+    "degraded_image": "DEWA_degraded_001.png",
+    "clean_image": "DEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "rotation",
+        "parameters": {
+          "angle": 1.2206291802808984
+        }
+      },
+      {
+        "type": "downscale",
+        "parameters": {
+          "scale": 0.55
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "DEWA.png",
+    "degraded_image": "DEWA_degraded_002.png",
+    "clean_image": "DEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "shadows",
+        "parameters": {
+          "type": "edge",
+          "opacity": 0.5399999999999999
+        }
+      },
+      {
+        "type": "brightness",
+        "parameters": {
+          "factor": 0.7
+        }
+      },
+      {
+        "type": "rotation",
+        "parameters": {
+          "angle": 0.25424599115390123
+        }
+      },
+      {
+        "type": "webp_compression",
+        "parameters": {
+          "quality": 50
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "DEWA.png",
+    "degraded_image": "DEWA_degraded_003.png",
+    "clean_image": "DEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "contrast",
+        "parameters": {
+          "factor": 0.5
+        }
+      }
+    ],
+    "severity": "high",
+    "source_image": "DEWA.png",
+    "degraded_image": "DEWA_degraded_004.png",
+    "clean_image": "DEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "speckle",
+        "parameters": {
+          "variance": 0.03
+        }
+      },
+      {
+        "type": "gaussian_noise",
+        "parameters": {
+          "std": 27.5
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "SEWA.png",
+    "degraded_image": "SEWA_degraded_000.png",
+    "clean_image": "SEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "salt_pepper",
+        "parameters": {
+          "proportion": 0.05500000000000001
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "SEWA.png",
+    "degraded_image": "SEWA_degraded_001.png",
+    "clean_image": "SEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "rotation",
+        "parameters": {
+          "angle": -0.6939209993454325
+        }
+      },
+      {
+        "type": "motion_blur",
+        "parameters": {
+          "kernel_size": 10,
+          "angle": 18
+        }
+      },
+      {
+        "type": "defocus_blur",
+        "parameters": {
+          "radius": 5
+        }
+      },
+      {
+        "type": "speckle",
+        "parameters": {
+          "variance": 0.03
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "SEWA.png",
+    "degraded_image": "SEWA_degraded_002.png",
+    "clean_image": "SEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "salt_pepper",
+        "parameters": {
+          "proportion": 0.028000000000000004
+        }
+      },
+      {
+        "type": "shadows",
+        "parameters": {
+          "type": "corner",
+          "opacity": 0.42
+        }
+      }
+    ],
+    "severity": "low",
+    "source_image": "SEWA.png",
+    "degraded_image": "SEWA_degraded_003.png",
+    "clean_image": "SEWA_clean.png"
+  },
+  {
+    "degradations": [
+      {
+        "type": "gaussian_blur",
+        "parameters": {
+          "sigma": 1.75
+        }
+      },
+      {
+        "type": "webp_compression",
+        "parameters": {
+          "quality": 50
+        }
+      },
+      {
+        "type": "brightness",
+        "parameters": {
+          "factor": 1.3
+        }
+      },
+      {
+        "type": "defocus_blur",
+        "parameters": {
+          "radius": 5
+        }
+      }
+    ],
+    "severity": "medium",
+    "source_image": "SEWA.png",
+    "degraded_image": "SEWA_degraded_004.png",
+    "clean_image": "SEWA_clean.png"
+  }
+]

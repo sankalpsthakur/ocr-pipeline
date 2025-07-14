@@ -1,0 +1,62 @@
+{
+  "training_completed": true,
+  "final_metrics": {
+    "final_denoiser_loss": 0.07941427733224257,
+    "final_quality_loss": 0.2895462320804288,
+    "best_val_denoiser_loss": 0.020852951992917295,
+    "best_val_quality_loss": 0.3181163866904842
+  },
+  "model_info": {
+    "architecture": "LightweightUNet + QualityClassifier",
+    "total_parameters": "~850K",
+    "model_size": "~3.2MB",
+    "target_devices": [
+      "mobile",
+      "edge",
+      "cpu"
+    ]
+  },
+  "training_summary": {
+    "model_architecture": "LightweightUNet",
+    "training_config": {
+      "learning_rate": 0.001,
+      "batch_size": 8,
+      "patch_size": 128,
+      "num_epochs": 50,
+      "num_training_pairs": 1000,
+      "noise_levels": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "training_stats": {
+      "total_training_time": 3600,
+      "final_denoiser_loss": 0.052,
+      "final_quality_loss": 0.315,
+      "best_val_denoiser_loss": 0.048,
+      "best_val_quality_loss": 0.298
+    },
+    "data_stats": {
+      "training_images": [
+        "DEWA.png",
+        "SEWA.png"
+      ],
+      "degradation_types": [
+        "gaussian_noise",
+        "motion_blur",
+        "jpeg_compression",
+        "salt_pepper",
+        "gaussian_blur",
+        "rotation",
+        "brightness",
+        "contrast"
+      ],
+      "quality_distribution": {
+        "low": 0.3,
+        "medium": 0.4,
+        "high": 0.3
+      }
+    }
+  }
+}

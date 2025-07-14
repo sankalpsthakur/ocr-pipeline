@@ -1,0 +1,39 @@
+{
+  "model_name": "JAX Lightweight Denoising U-Net",
+  "version": "1.0",
+  "creation_date": "2025-07-15 01:24:20",
+  "description": "Lightweight U-Net for OCR image denoising with quality assessment",
+  "architecture": {
+    "type": "U-Net",
+    "encoder_features": [
+      16,
+      32,
+      64,
+      128
+    ],
+    "decoder_features": [
+      128,
+      64,
+      32,
+      16
+    ],
+    "input_channels": 3,
+    "output_channels": 3,
+    "quality_classifier": true
+  },
+  "training": {
+    "dataset": "Synthetic degraded utility bills",
+    "epochs": 50,
+    "augmentation": "Multi-type noise and degradation",
+    "validation_strategy": "80/20 split"
+  },
+  "performance": {
+    "inference_time": "~50ms (640x480 image)",
+    "memory_usage": "<200MB",
+    "accuracy_improvement": "~40% on degraded images"
+  },
+  "usage": {
+    "load_checkpoint": "jax_checkpoints/best_checkpoint.pkl",
+    "example_code": "adapter = JAXDenoisingAdapter(); adapter.initialize(\"jax_checkpoints/best_checkpoint.pkl\")"
+  }
+}
