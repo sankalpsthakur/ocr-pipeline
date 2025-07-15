@@ -77,8 +77,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Railway port configuration
-PORT = int(os.environ.get("PORT", 8000))
+# Railway port configuration - force port 8000 to match Railway's load balancer
+PORT = 8000
 
 # Initialize OCR engines
 ocr_engine = None
