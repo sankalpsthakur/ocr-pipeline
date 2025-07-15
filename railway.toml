@@ -12,7 +12,7 @@ name = "ocr-pipeline"
 source = "."
 
 [services.variables]
-PORT = "8000"
+PORT = "8080"
 PYTHONPATH = "."
 PYTHONUNBUFFERED = "1"
 
