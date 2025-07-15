@@ -12,7 +12,7 @@ name = "ocr-pipeline"
 source = "."
 
 [services.variables]
-PORT = "8000"
+# Remove PORT - let Railway auto-assign it
 PYTHONPATH = "."
 PYTHONUNBUFFERED = "1"
 
