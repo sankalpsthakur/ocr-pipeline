@@ -2,8 +2,8 @@
 paddlepaddle
 paddleocr==2.7.3
 pillow>=8.0.0
-numpy>=1.21.0
-opencv-python-headless
+numpy<2.0.0,>=1.21.0
+opencv-python-headless<4.7.0
 scipy
 
 # Tesseract OCR (fallback)
@@ -22,10 +22,13 @@ aiofiles
 # Utilities
 python-dotenv
 pydantic>=1.8.0
+setuptools
+
+# PyTorch for mobile pipeline (production)
+torch
+torchvision
 
 # Optional: Advanced features (commented for minimal deployment)
 # jax[cpu]
 # flax
 # optax
-# torch
-# torchvision

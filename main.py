@@ -11,6 +11,14 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
+import sys
+
+# Add compatibility shim for imghdr (removed in Python 3.13)
+try:
+    import imghdr
+except ImportError:
+    import imghdr_compat as imghdr
+    sys.modules['imghdr'] = imghdr
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse, HTMLResponse
