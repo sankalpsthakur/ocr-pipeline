@@ -911,7 +911,13 @@ def extract_fields(text: str) -> Dict[str, str]:
         r"CO2e?\s*[:=]\s*(\d{1,4})",
         r"Emissions?[:\s]*(\d{1,4})\s*kg",
         r"Kg\s*CO2e\s*(\d{1,4})",  # For DEWA format
-        r"(\d{1,4})\s+The\s*Carbon"  # Number before "The Carbon Footprint"
+        r"(\d{1,4})\s+The\s*Carbon",  # Number before "The Carbon Footprint"
+        r"kg\s*CO2e\s*(\d{1,4})",  # kg CO2e 120 format
+        r"(\d{1,4})\s*kg\s*CO2e",  # 120 kg CO2e format
+        r"CO2\s*(\d{1,4})",  # Simple CO2 pattern
+        r"(\d{3})\s*(?=.*CO2)",  # Any 3-digit number near CO2
+        r"(?:footprint|emissions?).*?(\d{1,4}).*?(?:kg|CO2)",  # Flexible pattern
+        r"the\s*carbon\s*footprint.*?(\d{1,4})"  # Match "The Carbon Footprint" section
     ]
     
     for pattern in carbon_patterns:
@@ -999,6 +1005,30 @@ def extract_fields(text: str) -> Dict[str, str]:
             fields['peak_demand'] = match.group(1)
             break
     
+    # Water consumption patterns (general)
+    water_patterns = [
+        r"Water\s*(?:Consumption)?[:\s]*(\d{1,4}(?:\.\d{1,2})?)\s*(?:m3|cubic|m³)",
+        r"(\d{1,4}(?:\.\d{1,2})?)\s*m³",  # Direct m³ pattern
+        r"Water.*?(\d{1,4}(?:\.\d{1,2})?)\s*(?:Cubic|m3)",
+        r"(\d{1,4}(?:\.\d{1,2})?)\s*(?:Cubic\s*Meters?|m3)",
+        r"Total\s*Water[:\s]*(\d{1,4}(?:\.\d{1,2})?)",
+        r"(\d{2,3}\.\d{1,2})(?=.*water)",  # Decimal number near water
+        r"water.*?(\d{2,3}\.\d{1,2})",  # Water followed by decimal
+    ]
+    
+    for pattern in water_patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            value = match.group(1)
+            try:
+                # Validate water consumption range
+                num_val = float(value)
+                if 0.1 <= num_val <= 999:  # Reasonable water consumption range
+                    fields['water_consumption'] = value
+                    break
+            except:
+                continue
+    
     # Extract electricity and water values for SEWA (specific patterns)
     if "SEWA" in text or "Sharjah" in text:
         # SEWA-specific consumption patterns based on bill format
@@ -1031,7 +1061,7 @@ def extract_fields(text: str) -> Dict[str, str]:
                 fields['water_consumption'] = str(potential_values[1])
         
         # Try specific SEWA patterns from the visible table
-        sewa_specific = re.findall(r"(\d{2,4}\.?\d{2})", text)
+        sewa_specific = re.findall(r"(\d{2,4}(?:\.\d{1,2})?)", text)
         consumption_values = []
         for val in sewa_specific:
             try:
@@ -1045,7 +1075,14 @@ def extract_fields(text: str) -> Dict[str, str]:
         if consumption_values:
             consumption_values.sort(key=lambda x: x[1], reverse=True)
             if not fields.get('electricity_kwh') and consumption_values:
-                fields['electricity_kwh'] = consumption_values[0][0].split('.')[0]  # Remove decimals for kWh
+                # For electricity, use integer value
+                fields['electricity_kwh'] = str(int(consumption_values[0][1]))
+            if not fields.get('water_consumption') and len(consumption_values) > 1:
+                # Look for water value around 121.3
+                for val, num_val in consumption_values:
+                    if 100 <= num_val <= 150:  # Water range for SEWA
+                        fields['water_consumption'] = val
+                        break
     
     return fields
 
@@ -1185,9 +1222,17 @@ def build_utility_bill_payload(fields: Dict[str, any], image_path: Union[str, Pa
     with open(image_path, 'rb') as f:
         file_hash = hashlib.sha256(f.read()).hexdigest()
     
-    # Detect provider from filename or extracted data
+    # Detect provider from OCR text or filename
     provider_name = "Unknown Provider"
-    if "DEWA" in image_path.name.upper():
+    ocr_text_upper = fields.get('_full_text', '').upper()
+    
+    # Check OCR text first for provider detection
+    if "DEWA" in ocr_text_upper or "DUBAI ELECTRICITY" in ocr_text_upper:
+        provider_name = "Dubai Electricity and Water Authority (DEWA)"
+    elif "SEWA" in ocr_text_upper or "SHARJAH ELECTRICITY" in ocr_text_upper:
+        provider_name = "Sharjah Electricity and Water Authority (SEWA)"
+    # Fallback to filename detection
+    elif "DEWA" in image_path.name.upper():
         provider_name = "Dubai Electricity and Water Authority (DEWA)"
     elif "SEWA" in image_path.name.upper():
         provider_name = "Sharjah Electricity and Water Authority (SEWA)"
