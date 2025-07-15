@@ -7,7 +7,7 @@ cmds = [
 ]
 
 [phases.install]
-cmds = ["/usr/bin/python3 -m pip install -r requirements.txt"]
+cmds = ["/usr/bin/python3 -m pip install -r requirements.txt --break-system-packages"]
 
 [phases.build]
 cmds = ["echo 'Build completed'"]
