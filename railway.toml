@@ -3,7 +3,7 @@ builder = "nixpacks"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 900
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
@@ -12,6 +12,7 @@ name = "ocr-pipeline"
 source = "."
 
 [services.variables]
+PORT = "8000"
 PYTHONPATH = "."
 PYTHONUNBUFFERED = "1"
 

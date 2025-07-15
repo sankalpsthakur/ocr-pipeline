@@ -10,7 +10,12 @@ cmds = [
 cmds = ["/usr/bin/python3 -m pip install -r requirements.txt --break-system-packages"]
 
 [phases.build]
-cmds = ["echo 'Build completed'"]
+cmds = [
+    "echo 'Build completed'",
+    "echo 'Pre-downloading PaddleOCR models...'",
+    "/usr/bin/python3 -c \"import os; os.environ['HOME'] = '/root'; from paddleocr import PaddleOCR; ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False); print('Models downloaded successfully')\"",
+    "echo 'PaddleOCR models pre-downloaded to /root/.paddleocr/'"
+]
 
 [start]
 cmd = "/usr/bin/python3 main.py"
