@@ -2,7 +2,7 @@
 cmds = [
     "apt-get update",
     "apt-get install -y tesseract-ocr tesseract-ocr-eng",
-    "apt-get install -y libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libgl1-mesa-dri",
+    "apt-get install -y libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1 libgl1-mesa-dri libgl1",
     "apt-get install -y python3-pip python3-venv"
 ]
 

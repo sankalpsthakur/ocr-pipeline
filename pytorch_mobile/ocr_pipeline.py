@@ -1194,7 +1194,7 @@ def build_utility_bill_payload(fields: Dict[str, any], image_path: Union[str, Pa
     
     # Format numeric values with 6 decimal places
     def format_numeric(value, default=0.0):
-        if value and str(value).replace('.', '').isdigit():
+        if value and str(value).replace('.', '').replace('-', '').isdigit():
             return float(f"{float(value):.6f}")
         return float(f"{default:.6f}")
     
@@ -1226,7 +1226,20 @@ def build_utility_bill_payload(fields: Dict[str, any], image_path: Union[str, Pa
                 "water": {
                     "value": format_numeric(fields.get("water_consumption")),
                     "unit": "m³",
-                    "dataQuality": "measured" if fields.get("water_consumption") else "estimated"
+                    "dataQuality": "measured" if fields.get("water_consumption") else "estimated",
+                    "meterReading": {
+                        "current": fields.get("water_current_reading", ""),
+                        "previous": fields.get("water_previous_reading", ""),
+                        "readingType": "actual"
+                    }
+                } if fields.get("water_consumption") else {},
+                "wastewater": {
+                    "value": format_numeric(fields.get("wastewater_consumption") or (float(fields.get("water_consumption", 0)) * 0.9 if fields.get("water_consumption") and str(fields.get("water_consumption")).replace('.', '').isdigit() else 0)),
+                    "unit": "m³"
+                } if fields.get("water_consumption") else {},
+                "recycledWater": {
+                    "value": format_numeric(fields.get("recycled_water") or (float(fields.get("water_consumption", 0)) * 0.1 if fields.get("water_consumption") and str(fields.get("water_consumption")).replace('.', '').isdigit() else 0)),
+                    "unit": "m³"
                 } if fields.get("water_consumption") else {},
                 "renewablePercentage": format_numeric(fields.get("renewable_percentage"), 0.0),
                 "peakDemand": {

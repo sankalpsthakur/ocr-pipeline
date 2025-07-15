@@ -35,3 +35,10 @@ PADDLEOCR_ARGS = {
     "default": {"det_limit_side_len": 960, "rec_batch_num": 6},
     "bill": {"det_limit_side_len": 960, "rec_batch_num": 6}
 }
+
+# Tesseract settings
+TESSERACT_ARGS = [
+    '--psm', '3',  # Fully automatic page segmentation
+    '--oem', '3',  # Use both legacy and LSTM OCR engines
+    '-c', 'tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,:-'
+]

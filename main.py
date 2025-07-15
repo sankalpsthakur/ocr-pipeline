@@ -22,6 +22,17 @@ PIPELINE_AVAILABLE = False
 MOBILE_PIPELINE_AVAILABLE = False
 PADDLEOCR_AVAILABLE = False
 
+# Try PyTorch mobile pipeline first (best performance)
+try:
+    import sys
+    sys.path.append('./pytorch_mobile')
+    from pytorch_mobile.ocr_pipeline import run_ocr_with_utility_schema
+    PYTORCH_MOBILE_AVAILABLE = True
+    logging.info("PyTorch mobile pipeline loaded successfully")
+except ImportError as e:
+    logging.warning(f"PyTorch mobile pipeline import failed: {e}")
+    PYTORCH_MOBILE_AVAILABLE = False
+
 # Try main pipeline basic functions (without utility bill payload)
 try:
     from pipeline import run_ocr, extract_fields
@@ -212,6 +223,7 @@ async def root():
                 <ul>
                     <li><code>file</code>: Image file (PNG, JPEG, PDF)</li>
                     <li><code>format</code>: Output format ("utility_bill" or "basic")</li>
+                    <li><code>model</code>: OCR model ("pytorch_mobile", "main_pipeline", "simplified_ocr", "auto")</li>
                 </ul>
             </div>
             
@@ -227,16 +239,25 @@ async def root():
             
             <h2>System Status:</h2>
             <ul>
+                <li>PyTorch Mobile: """ + ("✅ Available" if PYTORCH_MOBILE_AVAILABLE else "❌ Not Available") + """</li>
                 <li>Main Pipeline: """ + ("✅ Available" if PIPELINE_AVAILABLE else "❌ Not Available") + """</li>
                 <li>PaddleOCR: """ + ("✅ Available" if PADDLEOCR_AVAILABLE else "❌ Not Available") + """</li>
                 <li>Tesseract: """ + ("✅ Available" if TESSERACT_AVAILABLE else "❌ Not Available") + """</li>
             </ul>
             
-            <h2>Usage Example:</h2>
+            <h2>Usage Examples:</h2>
             <pre>
+# Auto model selection (recommended)
 curl -X POST "http://localhost:8000/ocr" \\
      -F "file=@bill.png" \\
-     -F "format=utility_bill"
+     -F "format=utility_bill" \\
+     -F "model=auto"
+
+# Force PyTorch mobile (production-ready)
+curl -X POST "http://localhost:8000/ocr" \\
+     -F "file=@bill.png" \\
+     -F "format=utility_bill" \\
+     -F "model=pytorch_mobile"
             </pre>
         </body>
     </html>
@@ -254,12 +275,15 @@ async def get_status():
         "service": "OCR Pipeline API",
         "version": "1.0.0",
         "capabilities": {
+            "pytorch_mobile": PYTORCH_MOBILE_AVAILABLE,
             "main_pipeline": PIPELINE_AVAILABLE,
             "paddleocr": PADDLEOCR_AVAILABLE,
             "tesseract": TESSERACT_AVAILABLE,
-            "ocr_engine_active": ocr_engine is not None,
+            "ocr_engine_active": ocr_engine is not None or PYTORCH_MOBILE_AVAILABLE,
             "supported_formats": ["PNG", "JPEG", "PDF"],
-            "output_formats": ["utility_bill", "basic"]
+            "output_formats": ["utility_bill", "basic"],
+            "available_models": ["pytorch_mobile", "main_pipeline", "simplified_ocr", "auto"],
+            "recommended_model": "pytorch_mobile" if PYTORCH_MOBILE_AVAILABLE else "auto"
         },
         "environment": {
             "port": PORT,
@@ -271,7 +295,8 @@ async def get_status():
 @app.post("/ocr")
 async def process_ocr(
     file: UploadFile = File(...),
-    format: str = Form(default="utility_bill")
+    format: str = Form(default="utility_bill"),
+    model: str = Form(default="auto")
 ):
     """
     Process uploaded image with OCR and extract fields.
@@ -279,6 +304,7 @@ async def process_ocr(
     Args:
         file: Uploaded image file (PNG, JPEG, PDF)
         format: Output format ("utility_bill" or "basic")
+        model: OCR model to use ("pytorch_mobile", "main_pipeline", "simplified_ocr", "auto")
     
     Returns:
         JSON with extracted fields and metadata
@@ -294,8 +320,33 @@ async def process_ocr(
             detail="Unsupported file type. Please upload PNG, JPEG, or PDF."
         )
     
-    # Check if any OCR engine is available
-    if not PIPELINE_AVAILABLE and not PADDLEOCR_AVAILABLE and not TESSERACT_AVAILABLE:
+    # Validate model parameter
+    valid_models = ["pytorch_mobile", "main_pipeline", "simplified_ocr", "auto"]
+    if model not in valid_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model '{model}'. Must be one of: {', '.join(valid_models)}"
+        )
+    
+    # Check if requested model is available
+    if model == "pytorch_mobile" and not PYTORCH_MOBILE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="PyTorch mobile pipeline is not available. Try 'auto' for fallback."
+        )
+    elif model == "main_pipeline" and not PIPELINE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Main pipeline is not available. Try 'auto' for fallback."
+        )
+    elif model == "simplified_ocr" and not (PADDLEOCR_AVAILABLE or TESSERACT_AVAILABLE):
+        raise HTTPException(
+            status_code=503,
+            detail="Simplified OCR engines are not available. Try 'auto' for fallback."
+        )
+    
+    # Check if any OCR engine is available for auto mode
+    if model == "auto" and not PYTORCH_MOBILE_AVAILABLE and not PIPELINE_AVAILABLE and not PADDLEOCR_AVAILABLE and not TESSERACT_AVAILABLE:
         raise HTTPException(
             status_code=503,
             detail="OCR services are currently unavailable. Please try again later."
@@ -311,17 +362,129 @@ async def process_ocr(
         
         logger.info(f"Processing file: {file.filename} ({len(content)} bytes)")
         
-        # Try main pipeline first, then simplified OCR
+        # Model selection logic based on user preference
         pipeline_used = "unknown"
         
-        if PIPELINE_AVAILABLE:
+        # Force specific model if requested
+        if model == "pytorch_mobile":
+            # Use PyTorch mobile pipeline (production-ready)
+            if format == "utility_bill":
+                result = run_ocr_with_utility_schema(tmp_file_path)
+                pipeline_used = "pytorch_mobile"
+            else:
+                # For basic format, extract text from the utility schema result
+                utility_result = run_ocr_with_utility_schema(tmp_file_path)
+                result = {
+                    "success": True,
+                    "extracted_fields": utility_result.get("extractedData", {}).get("consumptionData", {}),
+                    "raw_text": f"Provider: {utility_result.get('extractedData', {}).get('billInfo', {}).get('providerName', '')}, "
+                               f"Account: {utility_result.get('extractedData', {}).get('billInfo', {}).get('accountNumber', '')}, "
+                               f"Electricity: {utility_result.get('extractedData', {}).get('consumptionData', {}).get('electricity', {}).get('value', 0)} kWh",
+                    "confidence": utility_result.get("validation", {}).get("confidence", 0.0)
+                }
+                pipeline_used = "pytorch_mobile_basic"
+        
+        elif model == "main_pipeline":
+            # Use main pipeline
+            ocr_result = run_ocr(tmp_file_path)
+            fields = extract_fields(ocr_result.text)
+            
+            if format == "utility_bill":
+                result = build_simple_utility_bill_payload(fields, tmp_file_path)
+            else:
+                result = {
+                    "success": True,
+                    "extracted_fields": fields,
+                    "raw_text": ocr_result.text,
+                    "confidence": getattr(ocr_result, 'confidence', 0.0)
+                }
+            
+            pipeline_used = "main"
+        
+        elif model == "simplified_ocr":
+            # Use simplified OCR pipeline
+            ocr_result = simple_run_ocr(tmp_file_path)
+            fields = simple_extract_fields(ocr_result['text'])
+            
+            if format == "utility_bill":
+                result = build_simple_utility_bill_payload(fields, tmp_file_path)
+            else:
+                result = {
+                    "success": True,
+                    "extracted_fields": fields,
+                    "raw_text": ocr_result['text'],
+                    "confidence": ocr_result['confidence']
+                }
+            
+            pipeline_used = f"simplified_{ocr_result['engine']}"
+        
+        elif model == "auto" and PYTORCH_MOBILE_AVAILABLE:
+            try:
+                # Use PyTorch mobile pipeline (production-ready)
+                if format == "utility_bill":
+                    result = run_ocr_with_utility_schema(tmp_file_path)
+                    pipeline_used = "pytorch_mobile"
+                else:
+                    # For basic format, extract text from the utility schema result
+                    utility_result = run_ocr_with_utility_schema(tmp_file_path)
+                    result = {
+                        "success": True,
+                        "extracted_fields": utility_result.get("extractedData", {}).get("consumptionData", {}),
+                        "raw_text": f"Provider: {utility_result.get('extractedData', {}).get('billInfo', {}).get('providerName', '')}, "
+                                   f"Account: {utility_result.get('extractedData', {}).get('billInfo', {}).get('accountNumber', '')}, "
+                                   f"Electricity: {utility_result.get('extractedData', {}).get('consumptionData', {}).get('electricity', {}).get('value', 0)} kWh",
+                        "confidence": utility_result.get("validation", {}).get("confidence", 0.0)
+                    }
+                    pipeline_used = "pytorch_mobile_basic"
+                    
+            except Exception as e:
+                logger.warning(f"PyTorch mobile pipeline failed: {e}, falling back to main pipeline")
+                # Fall back to main pipeline
+                if PIPELINE_AVAILABLE:
+                    try:
+                        # Use main pipeline
+                        ocr_result = run_ocr(tmp_file_path)
+                        fields = extract_fields(ocr_result.text)
+                        
+                        if format == "utility_bill":
+                            result = build_simple_utility_bill_payload(fields, tmp_file_path)
+                        else:
+                            result = {
+                                "success": True,
+                                "extracted_fields": fields,
+                                "raw_text": ocr_result.text,
+                                "confidence": getattr(ocr_result, 'confidence', 0.0)
+                            }
+                        
+                        pipeline_used = "main"
+                        
+                    except Exception as e2:
+                        logger.warning(f"Main pipeline failed: {e2}, falling back to simplified OCR")
+                        # Fall back to simplified OCR
+                        ocr_result = simple_run_ocr(tmp_file_path)
+                        fields = simple_extract_fields(ocr_result['text'])
+                        
+                        if format == "utility_bill":
+                            result = build_simple_utility_bill_payload(fields, tmp_file_path)
+                        else:
+                            result = {
+                                "success": True,
+                                "extracted_fields": fields,
+                                "raw_text": ocr_result['text'],
+                                "confidence": ocr_result['confidence']
+                            }
+                        
+                        pipeline_used = f"fallback_{ocr_result['engine']}"
+                else:
+                    raise e
+        
+        elif PIPELINE_AVAILABLE:
             try:
                 # Use main pipeline
                 ocr_result = run_ocr(tmp_file_path)
                 fields = extract_fields(ocr_result.text)
                 
                 if format == "utility_bill":
-                    # Use simplified payload builder since build_utility_bill_payload may not exist
                     result = build_simple_utility_bill_payload(fields, tmp_file_path)
                 else:
                     result = {
@@ -371,6 +534,7 @@ async def process_ocr(
         # Add processing metadata
         result["processing_metadata"] = {
             "pipeline_used": pipeline_used,
+            "model_requested": model,
             "file_name": file.filename,
             "file_size": len(content),
             "format_requested": format
