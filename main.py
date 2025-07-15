@@ -77,8 +77,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Railway port configuration - force port 8000 to match Railway's load balancer
-PORT = 8000
+# Railway port configuration - use Railway's provided PORT env variable
+PORT = int(os.getenv("PORT", "8000"))
 
 # Initialize OCR engines
 ocr_engine = None
@@ -582,7 +582,12 @@ async def internal_error_handler(request, exc):
     )
 
 if __name__ == "__main__":
-    # For local development
+    # For local development and Railway deployment
+    logger.info(f"Starting OCR Pipeline server on 0.0.0.0:{PORT}")
+    logger.info(f"PyTorch Mobile Available: {PYTORCH_MOBILE_AVAILABLE}")
+    logger.info(f"PaddleOCR Available: {PADDLEOCR_AVAILABLE}")
+    logger.info(f"Tesseract Available: {TESSERACT_AVAILABLE}")
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

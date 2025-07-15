@@ -18,4 +18,4 @@ cmds = [
 ]
 
 [start]
-cmd = "/usr/bin/python3 main.py"
+cmd = "cd /app && /usr/bin/python3 main.py"
