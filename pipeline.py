@@ -727,8 +727,7 @@ def _easyocr_ocr(image) -> OcrResult:
     
     # Initialize EasyOCR reader (cached after first use) with optimized settings
     if not hasattr(_easyocr_ocr, "reader"):
-        from config import EASYOCR_GPU, EASYOCR_LANG
-        _easyocr_ocr.reader = easyocr.Reader(EASYOCR_LANG, gpu=EASYOCR_GPU)
+        _easyocr_ocr.reader = easyocr.Reader(['en'], gpu=False)
     
     # Convert PIL image to numpy array
     if np is None:
